@@ -6,7 +6,7 @@ import json
 
 from telegram import Bot
 
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
@@ -31,36 +31,24 @@ CHAT_ID = os.environ["CHAT_ID"]
 
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 
-creds = None
-
 # ==========================================
-# LOAD SAVED LOGIN TOKEN
+# CREATE CREDS FROM ENV
 # ==========================================
 
-if os.path.exists('token.pkl'):
-
-    with open('token.pkl', 'rb') as token:
-        creds = pickle.load(token)
+creds = Credentials(
+    None,
+    refresh_token=google_credentials["refresh_token"],
+    token_uri="https://oauth2.googleapis.com/token",
+    client_id=google_credentials["client_id"],
+    client_secret=google_credentials["client_secret"],
+    scopes=SCOPES
+)
 
 # ==========================================
-# LOGIN IF TOKEN INVALID
+# REFRESH TOKEN
 # ==========================================
 
-if not creds or not creds.valid:
-
-    if creds and creds.expired and creds.refresh_token:
-
-        creds.refresh(Request())
-
-    else:
-
-        if os.path.exists('token.pkl'):
-    with open('token.pkl', 'rb') as token:
-        creds = pickle.load(token)
-
-    # Save token
-    with open('token.pkl', 'wb') as token:
-        pickle.dump(creds, token)
+creds.refresh(Request())
 
 # ==========================================
 # CONNECT GMAIL API
