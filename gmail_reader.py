@@ -51,6 +51,13 @@ google_credentials = json.loads(
     os.environ["GOOGLE_CREDENTIALS"]
 )
 
+import json
+import os
+
+google_credentials = json.loads(
+    os.environ["GOOGLE_CREDENTIALS"]
+)
+
 flow = InstalledAppFlow.from_client_config(
     google_credentials,
     SCOPES
