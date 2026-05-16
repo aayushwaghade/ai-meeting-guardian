@@ -44,10 +44,17 @@ if not creds or not creds.valid:
 
     else:
 
-        flow = InstalledAppFlow.from_client_secrets_file(
-            'credentials.json',
-            SCOPES
-        )
+        import json
+import os
+
+google_credentials = json.loads(
+    os.environ["GOOGLE_CREDENTIALS"]
+)
+
+flow = InstalledAppFlow.from_client_config(
+    google_credentials,
+    SCOPES
+)
 
         creds = flow.run_local_server(port=0)
 
