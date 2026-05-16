@@ -22,8 +22,8 @@ google_credentials = json.loads(
 # TELEGRAM SETTINGS
 # ==========================================
 
-BOT_TOKEN = os.environ["8811806530:AAGLledqz3X-V6FimzqYfntERMwUy_D2Jas"]
-CHAT_ID = os.environ["6610857554"]
+BOT_TOKEN = os.environ["BOT_TOKEN"]
+CHAT_ID = os.environ["CHAT_ID"]
 
 # ==========================================
 # GMAIL SETTINGS
