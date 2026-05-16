@@ -54,12 +54,9 @@ if not creds or not creds.valid:
 
     else:
 
-        flow = InstalledAppFlow.from_client_config(
-            google_credentials,
-            SCOPES
-        )
-
-        creds = flow.run_local_server(port=0)
+        if os.path.exists('token.pkl'):
+    with open('token.pkl', 'rb') as token:
+        creds = pickle.load(token)
 
     # Save token
     with open('token.pkl', 'wb') as token:
