@@ -1,6 +1,8 @@
+import os
 import os.path
 import pickle
 import asyncio
+import json
 
 from telegram import Bot
 
@@ -9,11 +11,19 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
 # ==========================================
+# GOOGLE CLOUD CREDENTIALS
+# ==========================================
+
+google_credentials = json.loads(
+    os.environ["GOOGLE_CREDENTIALS"]
+)
+
+# ==========================================
 # TELEGRAM SETTINGS
 # ==========================================
 
-BOT_TOKEN = "8811806530:AAGLledqz3X-V6FimzqYfntERMwUy_D2Jas"
-CHAT_ID = "6610857554"
+BOT_TOKEN = os.environ["8811806530:AAGLledqz3X-V6FimzqYfntERMwUy_D2Jas"]
+CHAT_ID = os.environ["6610857554"]
 
 # ==========================================
 # GMAIL SETTINGS
@@ -44,24 +54,10 @@ if not creds or not creds.valid:
 
     else:
 
-        import json
-import os
-
-google_credentials = json.loads(
-    os.environ["GOOGLE_CREDENTIALS"]
-)
-
-import json
-import os
-
-google_credentials = json.loads(
-    os.environ["GOOGLE_CREDENTIALS"]
-)
-
-flow = InstalledAppFlow.from_client_config(
-    google_credentials,
-    SCOPES
-)
+        flow = InstalledAppFlow.from_client_config(
+            google_credentials,
+            SCOPES
+        )
 
         creds = flow.run_local_server(port=0)
 
