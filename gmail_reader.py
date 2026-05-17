@@ -16,16 +16,13 @@ YOUR_PHONE_NUMBER = os.getenv("YOUR_PHONE_NUMBER")
 KEYWORDS = [
     "google student ambassador",
     "google ambassador",
-    "google ai",
     "gemini",
     "mandatory",
     "meeting",
     "orientation",
     "bootcamp",
     "session",
-    "deadline",
-    "selection",
-    "interview",
+    "deadline"
 ]
 
 processed_emails = set()
@@ -41,6 +38,7 @@ def authenticate_gmail():
         )
 
     if not creds or not creds.valid:
+
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
 
@@ -59,6 +57,7 @@ def authenticate_gmail():
 
 
 def send_whatsapp_message(message_text):
+
     url = f"https://graph.facebook.com/v20.0/{PHONE_NUMBER_ID}/messages"
 
     headers = {
@@ -81,12 +80,12 @@ def send_whatsapp_message(message_text):
         json=data
     )
 
-    print("📤 WhatsApp Response:")
     print(response.text)
 
 
-def is_google_related(subject, sender):
-    text = f"{subject} {sender}".lower()
+def contains_keywords(text):
+
+    text = text.lower()
 
     for keyword in KEYWORDS:
         if keyword in text:
@@ -96,22 +95,19 @@ def is_google_related(subject, sender):
 
 
 def check_inbox():
+
     try:
+
         print("🔎 Checking Inbox...")
 
         service = authenticate_gmail()
 
         results = service.users().messages().list(
             userId="me",
-            maxResults=10,
-            labelIds=["INBOX"]
+            maxResults=10
         ).execute()
 
         messages = results.get("messages", [])
-
-        if not messages:
-            print("📭 No emails found.")
-            return
 
         for msg in messages:
 
@@ -130,6 +126,7 @@ def check_inbox():
             sender = "Unknown Sender"
 
             for header in headers:
+
                 name = header.get("name", "")
                 value = header.get("value", "")
 
@@ -143,9 +140,11 @@ def check_inbox():
             print(f"📌 SUBJECT: {subject}")
             print(f"👤 SENDER: {sender}")
 
-            if is_google_related(subject, sender):
+            combined_text = f"{subject} {sender}"
 
-                whatsapp_text = f"""
+            if contains_keywords(combined_text):
+
+                whatsapp_message = f"""
 🚨 GOOGLE AMBASSADOR UPDATE
 
 📌 Subject:
@@ -155,17 +154,22 @@ def check_inbox():
 {sender}
 """
 
-                send_whatsapp_message(whatsapp_text)
+                send_whatsapp_message(whatsapp_message)
 
             processed_emails.add(msg["id"])
 
     except Exception as e:
+
         print("❌ ERROR:")
-        print(e)
+        print(str(e))
 
 
 def start_monitoring():
+
     while True:
+
         check_inbox()
+
         print("⏳ Waiting 5 mins...")
+
         time.sleep(300)
