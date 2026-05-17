@@ -7,3 +7,4 @@ schedule
 beautifulsoup4
 openai
 dateparser
+flask
