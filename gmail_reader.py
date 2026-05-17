@@ -5,7 +5,7 @@ import requests
 import json
 import time
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 from email import message_from_bytes
 
 from google.oauth2.credentials import Credentials
@@ -67,7 +67,11 @@ def send_whatsapp_alert(message):
         }
     }
 
-    response = requests.post(url, headers=headers, json=data)
+    response = requests.post(
+        url,
+        headers=headers,
+        json=data
+    )
 
     print("\n📲 WhatsApp Sent")
     print("Status:", response.status_code)
@@ -89,7 +93,7 @@ def analyze_email_with_ai(subject, body):
         }
 
         prompt = f"""
-Analyze this email.
+Analyze this email carefully.
 
 Return ONLY in this format:
 
@@ -155,22 +159,31 @@ N/A
 """
 
 # ============================================
-# IMPORTANT FILTERS
+# TRUSTED SENDERS
 # ============================================
 
 TRUSTED_SENDERS = [
 
     "google",
     "pingnetwork",
+    "pingnetwork.in",
     "ambassador",
     "gemini",
     "gdg",
     "developer",
     "tensorflow",
     "github",
-    "google for developers"
+    "google for developers",
+    "googlecommunity",
+    "noreply",
+    "no-reply",
+    "mail.google.com"
 
 ]
+
+# ============================================
+# IMPORTANT SUBJECT KEYWORDS
+# ============================================
 
 IMPORTANT_SUBJECTS = [
 
@@ -228,7 +241,11 @@ def extract_meeting_time(text):
 
     for pattern in patterns:
 
-        matches = re.findall(pattern, text, re.IGNORECASE)
+        matches = re.findall(
+            pattern,
+            text,
+            re.IGNORECASE
+        )
 
         if matches:
             found.extend(matches)
@@ -272,6 +289,10 @@ while True:
 
             body = ""
 
+            # ============================================
+            # READ EMAIL BODY
+            # ============================================
+
             if email_message.is_multipart():
 
                 for part in email_message.walk():
@@ -284,16 +305,24 @@ while True:
 
                         if payload:
 
-                            decoded = payload.decode(errors="ignore")
+                            decoded = payload.decode(
+                                errors="ignore"
+                            )
 
                             if content_type == "text/plain":
+
                                 body += decoded
 
                             elif content_type == "text/html":
 
-                                soup = BeautifulSoup(decoded, "html.parser")
+                                soup = BeautifulSoup(
+                                    decoded,
+                                    "html.parser"
+                                )
 
-                                clean_text = soup.get_text(separator=" ")
+                                clean_text = soup.get_text(
+                                    separator=" "
+                                )
 
                                 body += clean_text
 
@@ -304,18 +333,29 @@ while True:
 
                 try:
 
-                    payload = email_message.get_payload(decode=True)
+                    payload = email_message.get_payload(
+                        decode=True
+                    )
 
                     if payload:
-                        body += payload.decode(errors="ignore")
+
+                        body += payload.decode(
+                            errors="ignore"
+                        )
 
                 except:
                     pass
 
             full_text = f"{subject} {body}".lower()
 
+            # ============================================
+            # FILTER LOGIC
+            # ============================================
+
+            sender_lower = sender.lower()
+
             trusted_sender = any(
-                keyword.lower() in sender.lower()
+                keyword in sender_lower
                 for keyword in TRUSTED_SENDERS
             )
 
@@ -336,7 +376,7 @@ while True:
             print("-------------------------")
 
             # ============================================
-            # MATCH FILTER
+            # IMPORTANT MAIL DETECTED
             # ============================================
 
             if trusted_sender and important_subject:
@@ -351,7 +391,7 @@ while True:
                     )
 
                     # ============================================
-                    # MEETING EXTRACTION
+                    # MEETING DETECTION
                     # ============================================
 
                     detected_times = extract_meeting_time(body)
@@ -363,12 +403,13 @@ while True:
                         meeting_text = "\n📅 Meeting Time Detected:\n"
 
                         for t in detected_times:
+
                             meeting_text += f"{t}\n"
 
                         meeting_text += "\n⏰ Reminder scheduled"
 
                     # ============================================
-                    # FINAL WHATSAPP MESSAGE
+                    # WHATSAPP MESSAGE
                     # ============================================
 
                     whatsapp_message = f"""
@@ -394,10 +435,12 @@ Reply DONE after completing task.
                     print(whatsapp_message)
                     print("=" * 60)
 
-                    send_whatsapp_alert(whatsapp_message)
+                    send_whatsapp_alert(
+                        whatsapp_message
+                    )
 
                     # ============================================
-                    # SAVE SENT EMAIL
+                    # SAVE EMAIL
                     # ============================================
 
                     sent_emails[msg_id] = {
@@ -406,7 +449,12 @@ Reply DONE after completing task.
                     }
 
                     with open(REMINDER_FILE, "w") as f:
-                        json.dump(sent_emails, f, indent=4)
+
+                        json.dump(
+                            sent_emails,
+                            f,
+                            indent=4
+                        )
 
                 else:
 
