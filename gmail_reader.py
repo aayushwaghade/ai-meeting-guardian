@@ -1,3 +1,4 @@
+from bs4 import BeautifulSoup
 import os
 import base64
 import requests
@@ -64,9 +65,10 @@ def send_whatsapp_alert(message):
 
     response = requests.post(url, headers=headers, json=data)
 
-    print("📲 WhatsApp Response:")
+    print("📲 WhatsApp Debug Logs")
     print("WhatsApp Status:", response.status_code)
     print("WhatsApp Response:", response.text)
+
 # =========================
 # KEYWORDS
 # =========================
@@ -121,6 +123,10 @@ for msg in messages:
 
     body = ""
 
+    # =========================
+    # EXTRACT EMAIL BODY
+    # =========================
+
     if email_message.is_multipart():
 
         for part in email_message.walk():
@@ -130,8 +136,15 @@ for msg in messages:
             try:
                 payload = part.get_payload(decode=True)
 
-                if payload and content_type == "text/plain":
-                    body += payload.decode()
+                if payload:
+
+                    decoded_payload = payload.decode(errors="ignore")
+
+                    if content_type == "text/plain":
+                        body += decoded_payload
+
+                    elif content_type == "text/html":
+                        body += decoded_payload
 
             except:
                 pass
@@ -142,12 +155,24 @@ for msg in messages:
             payload = email_message.get_payload(decode=True)
 
             if payload:
-                body += payload.decode()
+                body += payload.decode(errors="ignore")
 
         except:
             pass
 
-    full_text = f"{subject} {body}".lower()
+    # =========================
+    # CLEAN HTML
+    # =========================
+
+    clean_text = BeautifulSoup(body, "html.parser").get_text()
+
+    clean_text = clean_text.replace("\n", " ")
+    clean_text = clean_text.replace("\r", " ")
+    clean_text = clean_text.strip()
+
+    snippet = clean_text[:400]
+
+    full_text = f"{subject} {clean_text}".lower()
 
     # =========================
     # IMPORTANT EMAIL DETECTION
@@ -158,16 +183,19 @@ for msg in messages:
         important_found = True
 
         whatsapp_message = f"""
-🔥 IMPORTANT EMAIL FOUND
+🚨 IMPORTANT EMAIL
 
-📌 SUBJECT:
+📌 Subject:
 {subject}
 
-📩 FROM:
+👤 From:
 {sender}
 
-📝 SNIPPET:
-{body[:300]}
+🧠 Summary:
+{snippet}
+
+⚡ Priority:
+HIGH
 
 🤖 AI Meeting Guardian
 """
