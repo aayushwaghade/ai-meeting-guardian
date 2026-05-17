@@ -1,6 +1,5 @@
 import os
 import json
-import base64
 import time
 
 from google.oauth2.credentials import Credentials
@@ -38,6 +37,23 @@ with open(PROCESSED_FILE, "r") as f:
 
 
 # =========================
+# GOOGLE AMBASSADOR KEYWORDS
+# =========================
+
+KEYWORDS = [
+    "google student ambassador",
+    "ambassador program",
+    "google ambassador",
+    "career glow-up",
+    "nano banana",
+    "mandatory demo session",
+    "pingnetwork",
+    "google student",
+    "task 1",
+]
+
+
+# =========================
 # CHECK GMAIL
 # =========================
 
@@ -47,14 +63,15 @@ def check_emails():
 
     results = service.users().messages().list(
         userId='me',
-        maxResults=5,
-        labelIds=['INBOX']
+        maxResults=10,
+        labelIds=['INBOX'],
+        q="is:unread"
     ).execute()
 
     messages = results.get('messages', [])
 
     if not messages:
-        print("No messages found.")
+        print("No new unread messages.")
         return
 
     for msg in messages:
@@ -82,12 +99,22 @@ def check_emails():
             if header["name"] == "From":
                 sender = header["value"]
 
-        print(f"\n📩 New Email Found")
+        # =========================
+        # FILTER ONLY GOOGLE AMBASSADOR EMAILS
+        # =========================
+
+        email_text = f"{subject} {sender}".lower()
+
+        if not any(keyword in email_text for keyword in KEYWORDS):
+            print(f"⏭ Skipped: {subject}")
+            continue
+
+        print(f"\n📩 Google Ambassador Email Found")
         print(f"From: {sender}")
         print(f"Subject: {subject}")
 
         whatsapp_text = f"""
-📩 *New Important Email*
+🔥 *Google Student Ambassador Alert*
 
 👤 From:
 {sender}
@@ -95,7 +122,7 @@ def check_emails():
 📌 Subject:
 {subject}
 
-Reply DONE after completing task.
+🚀 Check Gmail now.
 """
 
         send_whatsapp_message(whatsapp_text)
