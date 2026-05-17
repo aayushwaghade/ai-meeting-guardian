@@ -4,18 +4,8 @@ import threading
 
 app = Flask(__name__)
 
+threading.Thread(target=start_monitoring).start()
+
 @app.route("/")
 def home():
-    return "AI Meeting Guardian Running"
-
-
-@app.route("/webhook")
-def webhook():
-    return "Webhook Working"
-
-
-thread = threading.Thread(target=start_monitoring)
-thread.start()
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+    return "AI Meeting Guardian Running!"
