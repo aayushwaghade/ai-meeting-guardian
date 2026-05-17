@@ -7,7 +7,7 @@ from gmail_reader import check_gmail
 app = Flask(__name__)
 
 # =========================
-# LOAD REMINDERS
+# REMINDERS
 # =========================
 
 def load_reminders():
@@ -49,6 +49,7 @@ def webhook():
         message = data["entry"][0]["changes"][0]["value"]["messages"][0]
 
         if message["type"] == "text":
+
             user_text = message["text"]["body"].strip().lower()
 
             print(f"💬 User Reply: {user_text}")
@@ -60,7 +61,9 @@ def webhook():
                 found = False
 
                 for key in reminders:
-                    if reminders[key]["completed"] == False:
+
+                    if reminders[key].get("completed") == False:
+
                         reminders[key]["completed"] = True
                         found = True
                         break
@@ -82,29 +85,39 @@ def webhook():
 # =========================
 
 def gmail_loop():
+
     while True:
+
         try:
+
             print("\n🚀 AI Meeting Guardian Checking Gmail...\n")
 
             check_gmail()
 
         except Exception as e:
-            print("Gmail Loop Error:", e)
+
+            print("Gmail Error:", e)
 
         print("\n⏳ Waiting 5 mins...\n")
 
         time.sleep(300)
 
 # =========================
-# START EVERYTHING
+# START THREAD
+# =========================
+
+threading.Thread(target=gmail_loop, daemon=True).start()
+
+print("🚀 Bot Started Successfully")
+
+# =========================
+# START FLASK
 # =========================
 
 if __name__ == "__main__":
 
-    t = threading.Thread(target=gmail_loop)
-    t.daemon = True
-    t.start()
-
-    print("🚀 Bot Started Successfully")
-
-    app.run(host="0.0.0.0", port=5000)
+    app.run(
+        host="0.0.0.0",
+        port=5000,
+        threaded=True
+    )
