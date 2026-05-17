@@ -4,6 +4,7 @@ import base64
 import requests
 import json
 from email import message_from_bytes
+from datetime import datetime, timedelta
 
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -37,7 +38,10 @@ creds = Credentials(
     token_uri="https://oauth2.googleapis.com/token",
     client_id=google_credentials["client_id"],
     client_secret=google_credentials["client_secret"],
-    scopes=["https://www.googleapis.com/auth/gmail.readonly"]
+    scopes=[
+        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/calendar"
+    ]
 )
 
 creds.refresh(Request())
@@ -46,7 +50,17 @@ creds.refresh(Request())
 # GMAIL SERVICE
 # =========================
 
-service = build("gmail", "v1", credentials=creds)
+service = build(
+    "gmail",
+    "v1",
+    credentials=creds
+)
+
+calendar_service = build(
+    "calendar",
+    "v3",
+    credentials=creds
+)
 
 # =========================
 # WHATSAPP ALERT FUNCTION
@@ -74,7 +88,11 @@ def send_whatsapp_alert(message):
         }
     }
 
-    response = requests.post(url, headers=headers, json=data)
+    response = requests.post(
+        url,
+        headers=headers,
+        json=data
+    )
 
     print("\n📲 WhatsApp Debug Logs")
     print("WhatsApp Status:", response.status_code)
@@ -89,19 +107,19 @@ def generate_ai_summary(email_text):
     try:
 
         prompt = f"""
-You are an AI email assistant.
+You are an AI executive assistant.
 
 Analyze this email and provide:
 
 1. Short summary
 2. Priority (LOW, MEDIUM, HIGH)
-3. Any meeting info
-4. Any deadlines
+3. Meeting information
+4. Deadline information
 
 Email:
 {email_text}
 
-Format response EXACTLY like this:
+Format EXACTLY like this:
 
 SUMMARY:
 ...
@@ -147,6 +165,124 @@ None
 """
 
 # =========================
+# CALENDAR EXTRACTION
+# =========================
+
+def extract_calendar_event(email_text):
+
+    try:
+
+        prompt = f"""
+Extract meeting/event information from this email.
+
+Return ONLY valid JSON.
+
+Format:
+
+{{
+  "title": "",
+  "date": "",
+  "time": "",
+  "description": ""
+}}
+
+Use:
+- date format: YYYY-MM-DD
+- time format: HH:MM (24 hour)
+
+If no meeting exists return:
+
+{{
+  "title": "NONE"
+}}
+
+Email:
+{email_text}
+"""
+
+        completion = client.chat.completions.create(
+            model="openai/gpt-4o-mini",
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        )
+
+        response = completion.choices[0].message.content
+
+        print("\n📅 Event Extraction:")
+        print(response)
+
+        return json.loads(response)
+
+    except Exception as e:
+
+        print("Calendar AI Error:", str(e))
+
+        return {
+            "title": "NONE"
+        }
+
+# =========================
+# CREATE CALENDAR EVENT
+# =========================
+
+def create_calendar_event(
+    title,
+    date,
+    time_text,
+    description
+):
+
+    try:
+
+        start_datetime = datetime.strptime(
+            f"{date} {time_text}",
+            "%Y-%m-%d %H:%M"
+        )
+
+        end_datetime = start_datetime + timedelta(hours=1)
+
+        event = {
+            "summary": title,
+            "description": description,
+            "start": {
+                "dateTime": start_datetime.isoformat(),
+                "timeZone": "Asia/Kolkata",
+            },
+            "end": {
+                "dateTime": end_datetime.isoformat(),
+                "timeZone": "Asia/Kolkata",
+            },
+            "reminders": {
+                "useDefault": False,
+                "overrides": [
+                    {
+                        "method": "popup",
+                        "minutes": 30
+                    }
+                ],
+            },
+        }
+
+        created_event = calendar_service.events().insert(
+            calendarId="primary",
+            body=event
+        ).execute()
+
+        print("📅 Calendar Event Created!")
+
+        return created_event.get("htmlLink")
+
+    except Exception as e:
+
+        print("Calendar Error:", str(e))
+
+        return None
+
+# =========================
 # KEYWORDS
 # =========================
 
@@ -166,7 +302,9 @@ IMPORTANT_KEYWORDS = [
     "token",
     "security",
     "alert",
-    "github"
+    "github",
+    "session",
+    "schedule"
 ]
 
 # =========================
@@ -195,9 +333,13 @@ for msg in messages:
         format="raw"
     ).execute()
 
-    raw_data = base64.urlsafe_b64decode(txt["raw"])
+    raw_data = base64.urlsafe_b64decode(
+        txt["raw"]
+    )
 
-    email_message = message_from_bytes(raw_data)
+    email_message = message_from_bytes(
+        raw_data
+    )
 
     subject = email_message["subject"] or ""
     sender = email_message["from"] or ""
@@ -216,11 +358,15 @@ for msg in messages:
 
             try:
 
-                payload = part.get_payload(decode=True)
+                payload = part.get_payload(
+                    decode=True
+                )
 
                 if payload:
 
-                    decoded_payload = payload.decode(errors="ignore")
+                    decoded_payload = payload.decode(
+                        errors="ignore"
+                    )
 
                     if content_type == "text/plain":
                         body += decoded_payload
@@ -235,10 +381,14 @@ for msg in messages:
 
         try:
 
-            payload = email_message.get_payload(decode=True)
+            payload = email_message.get_payload(
+                decode=True
+            )
 
             if payload:
-                body += payload.decode(errors="ignore")
+                body += payload.decode(
+                    errors="ignore"
+                )
 
         except:
             pass
@@ -256,7 +406,9 @@ for msg in messages:
     clean_text = clean_text.replace("\r", " ")
     clean_text = clean_text.replace("\t", " ")
 
-    clean_text = " ".join(clean_text.split())
+    clean_text = " ".join(
+        clean_text.split()
+    )
 
     full_text = f"{subject} {clean_text}".lower()
 
@@ -264,7 +416,10 @@ for msg in messages:
     # IMPORTANT EMAIL CHECK
     # =========================
 
-    if any(keyword in full_text for keyword in IMPORTANT_KEYWORDS):
+    if any(
+        keyword in full_text
+        for keyword in IMPORTANT_KEYWORDS
+    ):
 
         important_found = True
 
@@ -275,6 +430,45 @@ for msg in messages:
         ai_response = generate_ai_summary(
             clean_text[:3000]
         )
+
+        # =========================
+        # EVENT EXTRACTION
+        # =========================
+
+        event_data = extract_calendar_event(
+            clean_text[:3000]
+        )
+
+        calendar_message = ""
+
+        if event_data.get("title") != "NONE":
+
+            event_link = create_calendar_event(
+                event_data["title"],
+                event_data["date"],
+                event_data["time"],
+                event_data["description"]
+            )
+
+            if event_link:
+
+                calendar_message = f"""
+
+📅 Calendar Event Created
+
+🗓 Title:
+{event_data['title']}
+
+⏰ Time:
+{event_data['date']} {event_data['time']}
+
+🔗 Event Link:
+{event_link}
+"""
+
+        # =========================
+        # FINAL WHATSAPP MESSAGE
+        # =========================
 
         whatsapp_message = f"""
 🚨 IMPORTANT EMAIL
@@ -287,6 +481,8 @@ for msg in messages:
 
 🧠 AI Analysis:
 {ai_response}
+
+{calendar_message}
 
 🤖 AI Meeting Guardian
 """
