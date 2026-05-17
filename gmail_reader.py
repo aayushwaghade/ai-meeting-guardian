@@ -9,8 +9,19 @@ from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
+from openai import OpenAI
+
 print("🚀 AI Meeting Guardian Running 24/7...")
 print("📩 Checking Important Emails...")
+
+# =========================
+# OPENROUTER AI
+# =========================
+
+client = OpenAI(
+    api_key=os.environ["OPENROUTER_API_KEY"],
+    base_url="https://openrouter.ai/api/v1"
+)
 
 # =========================
 # GOOGLE CREDENTIALS
@@ -68,6 +79,72 @@ def send_whatsapp_alert(message):
     print("\n📲 WhatsApp Debug Logs")
     print("WhatsApp Status:", response.status_code)
     print("WhatsApp Response:", response.text)
+
+# =========================
+# AI SUMMARY FUNCTION
+# =========================
+
+def generate_ai_summary(email_text):
+
+    try:
+
+        prompt = f"""
+You are an AI email assistant.
+
+Analyze this email and provide:
+
+1. Short summary
+2. Priority (LOW, MEDIUM, HIGH)
+3. Any meeting info
+4. Any deadlines
+
+Email:
+{email_text}
+
+Format response EXACTLY like this:
+
+SUMMARY:
+...
+
+PRIORITY:
+...
+
+MEETING:
+...
+
+DEADLINE:
+...
+"""
+
+        completion = client.chat.completions.create(
+            model="openai/gpt-4o-mini",
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        )
+
+        return completion.choices[0].message.content
+
+    except Exception as e:
+
+        print("AI Error:", str(e))
+
+        return """
+SUMMARY:
+AI summary unavailable
+
+PRIORITY:
+MEDIUM
+
+MEETING:
+None
+
+DEADLINE:
+None
+"""
 
 # =========================
 # KEYWORDS
@@ -128,7 +205,7 @@ for msg in messages:
     body = ""
 
     # =========================
-    # EXTRACT EMAIL BODY
+    # EXTRACT BODY
     # =========================
 
     if email_message.is_multipart():
@@ -138,6 +215,7 @@ for msg in messages:
             content_type = part.get_content_type()
 
             try:
+
                 payload = part.get_payload(decode=True)
 
                 if payload:
@@ -156,6 +234,7 @@ for msg in messages:
     else:
 
         try:
+
             payload = email_message.get_payload(decode=True)
 
             if payload:
@@ -168,7 +247,10 @@ for msg in messages:
     # CLEAN HTML
     # =========================
 
-    clean_text = BeautifulSoup(body, "html.parser").get_text()
+    clean_text = BeautifulSoup(
+        body,
+        "html.parser"
+    ).get_text()
 
     clean_text = clean_text.replace("\n", " ")
     clean_text = clean_text.replace("\r", " ")
@@ -176,28 +258,23 @@ for msg in messages:
 
     clean_text = " ".join(clean_text.split())
 
-    # =========================
-    # SHORT AI-STYLE SUMMARY
-    # =========================
-
-    summary = clean_text[:220]
-
-    if len(clean_text) > 220:
-        summary += "..."
-
-    # =========================
-    # COMBINED TEXT
-    # =========================
-
     full_text = f"{subject} {clean_text}".lower()
 
     # =========================
-    # IMPORTANT EMAIL DETECTION
+    # IMPORTANT EMAIL CHECK
     # =========================
 
     if any(keyword in full_text for keyword in IMPORTANT_KEYWORDS):
 
         important_found = True
+
+        # =========================
+        # AI ANALYSIS
+        # =========================
+
+        ai_response = generate_ai_summary(
+            clean_text[:3000]
+        )
 
         whatsapp_message = f"""
 🚨 IMPORTANT EMAIL
@@ -208,11 +285,8 @@ for msg in messages:
 👤 From:
 {sender}
 
-🧠 AI Summary:
-{summary}
-
-⚡ Priority:
-HIGH
+🧠 AI Analysis:
+{ai_response}
 
 🤖 AI Meeting Guardian
 """
@@ -221,7 +295,9 @@ HIGH
         print(whatsapp_message)
         print("=" * 60)
 
-        send_whatsapp_alert(whatsapp_message)
+        send_whatsapp_alert(
+            whatsapp_message
+        )
 
 # =========================
 # NO IMPORTANT EMAILS
