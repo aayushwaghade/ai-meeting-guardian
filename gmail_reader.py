@@ -13,7 +13,8 @@ from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
-print("🚀 Google AI Guardian Running...")
+print("🚀 Bot Started Successfully")
+print("🤖 Google AI Guardian Running...")
 print("📩 Monitoring Ambassador Updates...")
 
 # =========================
@@ -84,35 +85,42 @@ service = build(
 
 def send_whatsapp_alert(message):
 
-    token = os.environ["WHATSAPP_TOKEN"]
-    phone_number_id = os.environ["PHONE_NUMBER_ID"]
-    recipient = os.environ["WHATSAPP_TO"]
+    try:
 
-    url = f"https://graph.facebook.com/v22.0/{phone_number_id}/messages"
+        token = os.environ["WHATSAPP_TOKEN"]
+        phone_number_id = os.environ["PHONE_NUMBER_ID"]
+        recipient = os.environ["WHATSAPP_TO"]
 
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
+        url = f"https://graph.facebook.com/v22.0/{phone_number_id}/messages"
 
-    data = {
-        "messaging_product": "whatsapp",
-        "to": recipient,
-        "type": "text",
-        "text": {
-            "body": message
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
         }
-    }
 
-    response = requests.post(
-        url,
-        headers=headers,
-        json=data
-    )
+        data = {
+            "messaging_product": "whatsapp",
+            "to": recipient,
+            "type": "text",
+            "text": {
+                "body": message
+            }
+        }
 
-    print("\n📲 WhatsApp Sent")
-    print("Status:", response.status_code)
-    print("Response:", response.text)
+        response = requests.post(
+            url,
+            headers=headers,
+            json=data
+        )
+
+        print("\n📲 WhatsApp Sent")
+        print("Status:", response.status_code)
+        print("Response:", response.text)
+
+    except Exception as e:
+
+        print("\n❌ WhatsApp Error")
+        print(str(e))
 
 # =========================
 # TRUSTED SENDERS
@@ -205,9 +213,9 @@ def extract_day(text):
 
 while True:
 
-    print("\n🔎 Checking Inbox...")
-
     try:
+
+        print("\n🔎 Checking Inbox...")
 
         # =========================
         # FETCH EMAILS
@@ -227,40 +235,74 @@ while True:
 
         for msg in messages:
 
-            message_id = msg["id"]
+            try:
 
-            txt = service.users().messages().get(
-                userId="me",
-                id=message_id,
-                format="raw"
-            ).execute()
+                message_id = msg["id"]
 
-            raw_data = base64.urlsafe_b64decode(
-                txt["raw"]
-            )
+                txt = service.users().messages().get(
+                    userId="me",
+                    id=message_id,
+                    format="raw"
+                ).execute()
 
-            email_message = message_from_bytes(
-                raw_data
-            )
+                raw_data = base64.urlsafe_b64decode(
+                    txt["raw"]
+                )
 
-            subject = email_message["subject"] or ""
-            sender = email_message["from"] or ""
+                email_message = message_from_bytes(
+                    raw_data
+                )
 
-            body = ""
+                subject = email_message["subject"] or ""
+                sender = email_message["from"] or ""
 
-            # =========================
-            # EXTRACT BODY
-            # =========================
+                body = ""
 
-            if email_message.is_multipart():
+                # =========================
+                # EXTRACT BODY
+                # =========================
 
-                for part in email_message.walk():
+                if email_message.is_multipart():
 
-                    content_type = part.get_content_type()
+                    for part in email_message.walk():
+
+                        content_type = part.get_content_type()
+
+                        try:
+
+                            payload = part.get_payload(
+                                decode=True
+                            )
+
+                            if payload:
+
+                                decoded_payload = payload.decode(
+                                    errors="ignore"
+                                )
+
+                                if content_type == "text/plain":
+
+                                    body += decoded_payload
+
+                                elif content_type == "text/html":
+
+                                    soup = BeautifulSoup(
+                                        decoded_payload,
+                                        "html.parser"
+                                    )
+
+                                    body += soup.get_text(
+                                        separator=" "
+                                    )
+
+                        except:
+                            pass
+
+                else:
 
                     try:
 
-                        payload = part.get_payload(
+                        payload = email_message.get_payload(
                             decode=True
                         )
 
@@ -270,101 +312,73 @@ while True:
                                 errors="ignore"
                             )
 
-                            if content_type == "text/plain":
+                            soup = BeautifulSoup(
+                                decoded_payload,
+                                "html.parser"
+                            )
 
-                                body += decoded_payload
-
-                            elif content_type == "text/html":
-
-                                soup = BeautifulSoup(
-                                    decoded_payload,
-                                    "html.parser"
-                                )
-
-                                body += soup.get_text(
-                                    separator=" "
-                                )
+                            body += soup.get_text(
+                                separator=" "
+                            )
 
                     except:
                         pass
 
-            else:
+                # =========================
+                # CLEAN BODY
+                # =========================
 
-                try:
+                body = " ".join(body.split())
 
-                    payload = email_message.get_payload(
-                        decode=True
+                sender_lower = sender.lower()
+
+                full_content = f"""
+                {subject}
+                {body}
+                """.lower()
+
+                # =========================
+                # DETECT IMPORTANT EMAILS
+                # =========================
+
+                trusted_sender = any(
+                    domain in sender_lower
+                    for domain in TRUSTED_SENDERS
+                )
+
+                important_subject = any(
+                    keyword in full_content
+                    for keyword in IMPORTANT_SUBJECTS
+                )
+
+                if trusted_sender and important_subject:
+
+                    # =========================
+                    # SKIP DUPLICATES
+                    # =========================
+
+                    if message_id in reminders:
+                        continue
+
+                    print("\n🔥 IMPORTANT AMBASSADOR EMAIL FOUND")
+
+                    # =========================
+                    # EXTRACT MEETING INFO
+                    # =========================
+
+                    meeting_time = extract_meeting_time(
+                        body
                     )
 
-                    if payload:
+                    meeting_day = extract_day(
+                        body
+                    )
 
-                        decoded_payload = payload.decode(
-                            errors="ignore"
-                        )
+                    # =========================
+                    # WHATSAPP MESSAGE
+                    # =========================
 
-                        soup = BeautifulSoup(
-                            decoded_payload,
-                            "html.parser"
-                        )
-
-                        body += soup.get_text(
-                            separator=" "
-                        )
-
-                except:
-                    pass
-
-            # =========================
-            # CLEAN BODY
-            # =========================
-
-            body = " ".join(body.split())
-
-            sender_lower = sender.lower()
-
-            full_content = f"""
-            {subject}
-            {body}
-            """.lower()
-
-            # =========================
-            # DETECT IMPORTANT EMAILS
-            # =========================
-
-            trusted_sender = any(
-                domain in sender_lower
-                for domain in TRUSTED_SENDERS
-            )
-
-            important_subject = any(
-                keyword in full_content
-                for keyword in IMPORTANT_SUBJECTS
-            )
-
-            if trusted_sender and important_subject:
-
-                if message_id in reminders:
-                    continue
-
-                print("\n🔥 IMPORTANT AMBASSADOR EMAIL FOUND")
-
-                # =========================
-                # EXTRACT MEETING INFO
-                # =========================
-
-                meeting_time = extract_meeting_time(
-                    body
-                )
-
-                meeting_day = extract_day(
-                    body
-                )
-
-                # =========================
-                # WHATSAPP MESSAGE
-                # =========================
-
-                whatsapp_message = f"""
+                    whatsapp_message = f"""
 🚨 IMPORTANT AMBASSADOR UPDATE
 
 📌 Subject:
@@ -387,42 +401,51 @@ while True:
 🤖 Google AI Guardian
 """
 
-                print("=" * 60)
-                print(whatsapp_message)
-                print("=" * 60)
+                    print("=" * 60)
+                    print(whatsapp_message)
+                    print("=" * 60)
 
-                send_whatsapp_alert(
-                    whatsapp_message
-                )
+                    # =========================
+                    # SEND WHATSAPP
+                    # =========================
 
-                # =========================
-                # SAVE REMINDER
-                # =========================
+                    send_whatsapp_alert(
+                        whatsapp_message
+                    )
 
-                reminders[message_id] = {
+                    # =========================
+                    # SAVE REMINDER
+                    # =========================
 
-                    "subject": subject,
+                    reminders[message_id] = {
 
-                    "sender": sender,
+                        "subject": subject,
 
-                    "body": body[:500],
+                        "sender": sender,
 
-                    "meeting_day": meeting_day,
+                        "body": body[:500],
 
-                    "meeting_time": meeting_time,
+                        "meeting_day": meeting_day,
 
-                    "created_at":
-                    datetime.now().isoformat(),
+                        "meeting_time": meeting_time,
 
-                    "last_sent":
-                    datetime.now().isoformat(),
+                        "created_at":
+                        datetime.now().isoformat(),
 
-                    "count": 1,
+                        "last_sent":
+                        datetime.now().isoformat(),
 
-                    "meeting_reminder_sent": False
-                }
+                        "count": 1,
 
-                save_reminders()
+                        "meeting_reminder_sent": False
+                    }
+
+                    save_reminders()
+
+            except Exception as email_error:
+
+                print("\n❌ EMAIL PROCESSING ERROR")
+                print(str(email_error))
 
         # =========================
         # SEND REMINDERS
@@ -432,52 +455,54 @@ while True:
 
         for message_id in list(reminders.keys()):
 
-            reminder = reminders[message_id]
+            try:
 
-            created_at = datetime.fromisoformat(
-                reminder["created_at"]
-            )
+                reminder = reminders[message_id]
 
-            last_sent = datetime.fromisoformat(
-                reminder["last_sent"]
-            )
-
-            reminder_count = reminder["count"]
-
-            # =========================
-            # AUTO STOP
-            # =========================
-
-            hours_passed = (
-                current_time - created_at
-            ).total_seconds() / 3600
-
-            if (
-                reminder_count >= 6
-                or hours_passed >= 24
-            ):
-
-                print(
-                    f"\n✅ Stopped reminders for: {reminder['subject']}"
+                created_at = datetime.fromisoformat(
+                    reminder["created_at"]
                 )
 
-                del reminders[message_id]
+                last_sent = datetime.fromisoformat(
+                    reminder["last_sent"]
+                )
 
-                save_reminders()
+                reminder_count = reminder["count"]
 
-                continue
+                # =========================
+                # AUTO STOP
+                # =========================
 
-            # =========================
-            # NORMAL REMINDER
-            # =========================
+                hours_passed = (
+                    current_time - created_at
+                ).total_seconds() / 3600
 
-            minutes_since_last = (
-                current_time - last_sent
-            ).total_seconds() / 60
+                if (
+                    reminder_count >= 6
+                    or hours_passed >= 24
+                ):
 
-            if minutes_since_last >= 30:
+                    print(
+                        f"\n✅ Stopped reminders for: {reminder['subject']}"
+                    )
 
-                reminder_message = f"""
+                    del reminders[message_id]
+
+                    save_reminders()
+
+                    continue
+
+                # =========================
+                # NORMAL REMINDER
+                # =========================
+
+                minutes_since_last = (
+                    current_time - last_sent
+                ).total_seconds() / 60
+
+                if minutes_since_last >= 30:
+
+                    reminder_message = f"""
 ⏰ AMBASSADOR REMINDER
 
 📌 Subject:
@@ -497,51 +522,51 @@ while True:
 🤖 Google AI Guardian
 """
 
-                print("\n⏰ Sending Reminder")
+                    print("\n⏰ Sending Reminder")
 
-                send_whatsapp_alert(
-                    reminder_message
-                )
-
-                reminders[message_id][
-                    "last_sent"
-                ] = current_time.isoformat()
-
-                reminders[message_id][
-                    "count"
-                ] += 1
-
-                save_reminders()
-
-            # =========================
-            # 30 MIN MEETING ALERT
-            # =========================
-
-            if (
-                reminder["meeting_time"]
-                and not reminder["meeting_reminder_sent"]
-            ):
-
-                try:
-
-                    meeting_datetime = datetime.strptime(
-                        reminder["meeting_time"],
-                        "%I:%M %p"
+                    send_whatsapp_alert(
+                        reminder_message
                     )
 
-                    meeting_today = current_time.replace(
-                        hour=meeting_datetime.hour,
-                        minute=meeting_datetime.minute,
-                        second=0
-                    )
+                    reminders[message_id][
+                        "last_sent"
+                    ] = current_time.isoformat()
 
-                    minutes_left = (
-                        meeting_today - current_time
-                    ).total_seconds() / 60
+                    reminders[message_id][
+                        "count"
+                    ] += 1
 
-                    if 0 <= minutes_left <= 30:
+                    save_reminders()
 
-                        meeting_alert = f"""
+                # =========================
+                # 30 MIN MEETING ALERT
+                # =========================
+
+                if (
+                    reminder["meeting_time"]
+                    and not reminder["meeting_reminder_sent"]
+                ):
+
+                    try:
+
+                        meeting_datetime = datetime.strptime(
+                            reminder["meeting_time"],
+                            "%I:%M %p"
+                        )
+
+                        meeting_today = current_time.replace(
+                            hour=meeting_datetime.hour,
+                            minute=meeting_datetime.minute,
+                            second=0
+                        )
+
+                        minutes_left = (
+                            meeting_today - current_time
+                        ).total_seconds() / 60
+
+                        if 0 <= minutes_left <= 30:
+
+                            meeting_alert = f"""
 ⏰ MEETING STARTS SOON
 
 📌 {reminder['subject']}
@@ -555,31 +580,37 @@ while True:
 🤖 Google AI Guardian
 """
 
-                        send_whatsapp_alert(
-                            meeting_alert
-                        )
+                            send_whatsapp_alert(
+                                meeting_alert
+                            )
 
-                        reminders[message_id][
-                            "meeting_reminder_sent"
-                        ] = True
+                            reminders[message_id][
+                                "meeting_reminder_sent"
+                            ] = True
 
-                        save_reminders()
+                            save_reminders()
+
+                            print(
+                                "\n📅 Meeting reminder sent."
+                            )
+
+                    except Exception as meeting_error:
 
                         print(
-                            "\n📅 Meeting reminder sent."
+                            "\n❌ Meeting Reminder Error"
                         )
 
-                except Exception as e:
+                        print(str(meeting_error))
 
-                    print(
-                        "Meeting Reminder Error:",
-                        e
-                    )
+            except Exception as reminder_error:
 
-    except Exception as e:
+                print("\n❌ Reminder Error")
+                print(str(reminder_error))
 
-        print("\n❌ ERROR:")
-        print(str(e))
+    except Exception as main_error:
+
+        print("\n❌ MAIN LOOP ERROR")
+        print(str(main_error))
 
     # =========================
     # WAIT 5 MINS
