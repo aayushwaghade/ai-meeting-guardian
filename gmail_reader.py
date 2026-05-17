@@ -15,7 +15,7 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
 print("🚀 Google AI Guardian Running...")
-print("📩 Monitoring Ambassador Updates...")
+print("📩 Monitoring Google Ambassador Updates...")
 
 # ============================================
 # GOOGLE CREDENTIALS
@@ -109,7 +109,6 @@ def send_whatsapp_alert(message):
 
     print("\n📲 WhatsApp Sent")
     print("Status:", response.status_code)
-    print(response.text)
 
 # ============================================
 # GOOGLE STUDENT AMBASSADOR SENDERS
@@ -121,11 +120,12 @@ TRUSTED_SENDERS = [
     "google.com",
     "developers.google.com",
     "googlecloud",
+    "googlefordevelopers",
     "gdg",
+    "gdsc",
     "women techmakers",
     "tensorflow",
     "startupschool",
-    "googlefordevelopers",
     "no-reply@google.com",
     "@google.com"
 ]
@@ -149,6 +149,7 @@ IMPORTANT_SUBJECT_KEYWORDS = [
     "google developers",
     "google for developers",
     "gdg",
+    "gdsc",
     "certificate",
     "selected",
     "congratulations",
@@ -161,8 +162,7 @@ IMPORTANT_SUBJECT_KEYWORDS = [
     "bootcamp",
     "hackathon",
     "developer program",
-    "developer student club",
-    "gdsc"
+    "developer student club"
 ]
 
 # ============================================
@@ -205,7 +205,7 @@ def extract_meeting_datetime(text):
     return None
 
 # ============================================
-# STRICT EMAIL FILTER
+# CLEAN IMPORTANT EMAIL FILTER
 # ============================================
 
 def is_important_email(subject, sender, body):
@@ -229,14 +229,8 @@ def is_important_email(subject, sender, body):
         for keyword in IMPORTANT_SUBJECT_KEYWORDS
     )
 
-    print("\n----------------------")
-    print(f"📌 SUBJECT: {subject}")
-    print(f"👤 SENDER: {sender}")
-    print(f"✅ Trusted Sender: {trusted_sender}")
-    print(f"🔥 Important Subject: {important_subject}")
-    print("----------------------")
-
-    return (
+    # STRICT FILTER
+    is_important = (
         trusted_sender
         and
         (
@@ -244,6 +238,17 @@ def is_important_email(subject, sender, body):
             or important_body
         )
     )
+
+    # ONLY PRINT IMPORTANT EMAILS
+    if is_important:
+
+        print("\n======================")
+        print("🚨 IMPORTANT EMAIL DETECTED")
+        print(f"📌 SUBJECT: {subject}")
+        print(f"👤 SENDER: {sender}")
+        print("======================")
+
+    return is_important
 
 # ============================================
 # MAIN MONITOR LOOP
@@ -253,7 +258,7 @@ def start_monitoring():
 
     print("🚀 Bot Started Successfully")
     print("🤖 Google AI Guardian Running...")
-    print("📬 Monitoring Ambassador Updates...")
+    print("📬 Monitoring Google Ambassador Updates...")
 
     while True:
 
