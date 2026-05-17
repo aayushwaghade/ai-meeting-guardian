@@ -229,7 +229,6 @@ def is_important_email(subject, sender, body):
         for keyword in IMPORTANT_SUBJECT_KEYWORDS
     )
 
-    # STRICT FILTER
     is_important = (
         trusted_sender
         and
@@ -239,7 +238,6 @@ def is_important_email(subject, sender, body):
         )
     )
 
-    # ONLY PRINT IMPORTANT EMAILS
     if is_important:
 
         print("\n======================")
@@ -294,10 +292,6 @@ def start_monitoring():
                 time_difference = (
                     meeting_time - current_time
                 ).total_seconds()
-
-                # ============================================
-                # SEND 30 MIN REMINDER
-                # ============================================
 
                 if 0 < time_difference <= 1800:
 
@@ -364,8 +358,9 @@ Reply DONE after attending meeting.
                     raw_data
                 )
 
-                subject = email_message["subject"] or ""
-                sender = email_message["from"] or ""
+                # SAFE HEADER EXTRACTION
+                subject = email_message.get("subject", "")
+                sender = email_message.get("from", "")
 
                 body = ""
 
@@ -491,10 +486,6 @@ Reply DONE after completing task.
                     send_whatsapp_alert(
                         detected_message
                     )
-
-                # ============================================
-                # NORMAL IMPORTANT UPDATE
-                # ============================================
 
                 else:
 
