@@ -5,7 +5,7 @@ import requests
 import json
 import time
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from email import message_from_bytes
 
 from google.oauth2.credentials import Credentials
@@ -182,7 +182,7 @@ TRUSTED_SENDERS = [
 ]
 
 # ============================================
-# IMPORTANT SUBJECT KEYWORDS
+# IMPORTANT SUBJECTS
 # ============================================
 
 IMPORTANT_SUBJECTS = [
@@ -210,10 +210,10 @@ IMPORTANT_SUBJECTS = [
 ]
 
 # ============================================
-# REMINDER STORAGE
+# STORAGE FILE
 # ============================================
 
-REMINDER_FILE = "sent_emails.json"
+REMINDER_FILE = "reminders.json"
 
 if not os.path.exists(REMINDER_FILE):
 
@@ -221,36 +221,99 @@ if not os.path.exists(REMINDER_FILE):
         json.dump({}, f)
 
 with open(REMINDER_FILE, "r") as f:
-    sent_emails = json.load(f)
+    reminders = json.load(f)
 
 # ============================================
 # EXTRACT MEETING TIME
 # ============================================
 
-def extract_meeting_time(text):
+def extract_meeting_datetime(text):
 
-    patterns = [
+    day_match = re.search(
+        r"(monday|tuesday|wednesday|thursday|friday|saturday|sunday)",
+        text,
+        re.IGNORECASE
+    )
 
-        r'(\d{1,2}:\d{2}\s?(AM|PM|am|pm))',
-        r'(monday|tuesday|wednesday|thursday|friday|saturday|sunday)',
-        r'(\d{1,2}\s?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec))'
+    time_match = re.search(
+        r"(\d{1,2}:\d{2}\s?(AM|PM|am|pm))",
+        text
+    )
 
-    ]
+    if day_match and time_match:
 
-    found = []
+        meeting_day = day_match.group(1)
+        meeting_time = time_match.group(1)
 
-    for pattern in patterns:
+        return f"{meeting_day} {meeting_time}"
 
-        matches = re.findall(
-            pattern,
-            text,
-            re.IGNORECASE
-        )
+    return None
 
-        if matches:
-            found.extend(matches)
+# ============================================
+# CHECK REMINDERS
+# ============================================
 
-    return found
+def check_meeting_reminders():
+
+    current_time = datetime.now()
+
+    updated = False
+
+    for msg_id, data in reminders.items():
+
+        if "meeting_datetime" not in data:
+            continue
+
+        if data.get("reminder_sent"):
+            continue
+
+        try:
+
+            meeting_time = datetime.fromisoformat(
+                data["meeting_datetime"]
+            )
+
+            reminder_time = meeting_time - timedelta(minutes=30)
+
+            if current_time >= reminder_time:
+
+                reminder_message = f"""
+⏰ MEETING REMINDER
+
+📌 Subject:
+{data['subject']}
+
+📅 Meeting starts in 30 mins
+
+🕒 Time:
+{meeting_time.strftime('%d %b %Y %I:%M %p')}
+
+🤖 Google AI Guardian
+"""
+
+                send_whatsapp_alert(
+                    reminder_message
+                )
+
+                data["reminder_sent"] = True
+
+                updated = True
+
+                print("✅ Reminder Sent")
+
+        except Exception as e:
+
+            print("❌ Reminder Error:", e)
+
+    if updated:
+
+        with open(REMINDER_FILE, "w") as f:
+
+            json.dump(
+                reminders,
+                f,
+                indent=4
+            )
 
 # ============================================
 # MAIN LOOP
@@ -261,6 +324,12 @@ while True:
     try:
 
         print("\n🔎 Checking Inbox...")
+
+        # ============================================
+        # CHECK REMINDERS FIRST
+        # ============================================
+
+        check_meeting_reminders()
 
         results = service.users().messages().list(
             userId="me",
@@ -280,9 +349,13 @@ while True:
                 format="raw"
             ).execute()
 
-            raw_data = base64.urlsafe_b64decode(txt["raw"])
+            raw_data = base64.urlsafe_b64decode(
+                txt["raw"]
+            )
 
-            email_message = message_from_bytes(raw_data)
+            email_message = message_from_bytes(
+                raw_data
+            )
 
             subject = email_message["subject"] or ""
             sender = email_message["from"] or ""
@@ -301,7 +374,9 @@ while True:
 
                     try:
 
-                        payload = part.get_payload(decode=True)
+                        payload = part.get_payload(
+                            decode=True
+                        )
 
                         if payload:
 
@@ -364,10 +439,6 @@ while True:
                 for keyword in IMPORTANT_SUBJECTS
             )
 
-            # ============================================
-            # DEBUG LOGS
-            # ============================================
-
             print("\n-------------------------")
             print("📌 SUBJECT:", subject)
             print("👤 SENDER:", sender)
@@ -376,12 +447,12 @@ while True:
             print("-------------------------")
 
             # ============================================
-            # IMPORTANT MAIL DETECTED
+            # IMPORTANT EMAIL
             # ============================================
 
             if trusted_sender and important_subject:
 
-                if msg_id not in sent_emails:
+                if msg_id not in reminders:
 
                     print("✅ IMPORTANT EMAIL DETECTED")
 
@@ -390,27 +461,31 @@ while True:
                         body[:3000]
                     )
 
-                    # ============================================
-                    # MEETING DETECTION
-                    # ============================================
-
-                    detected_times = extract_meeting_time(body)
+                    meeting_datetime = extract_meeting_datetime(
+                        body
+                    )
 
                     meeting_text = ""
 
-                    if detected_times:
+                    stored_meeting_time = None
 
-                        meeting_text = "\n📅 Meeting Time Detected:\n"
+                    if meeting_datetime:
 
-                        for t in detected_times:
+                        meeting_text = f"""
 
-                            meeting_text += f"{t}\n"
+📅 Meeting Detected:
+{meeting_datetime}
 
-                        meeting_text += "\n⏰ Reminder scheduled"
+⏰ Auto reminder scheduled
+"""
 
-                    # ============================================
-                    # WHATSAPP MESSAGE
-                    # ============================================
+                        # TEMP SAMPLE TIME
+                        # Replace later with real parser
+
+                        stored_meeting_time = (
+                            datetime.now()
+                            + timedelta(minutes=35)
+                        ).isoformat()
 
                     whatsapp_message = f"""
 🚨 IMPORTANT GOOGLE UPDATE
@@ -439,19 +514,25 @@ Reply DONE after completing task.
                         whatsapp_message
                     )
 
-                    # ============================================
-                    # SAVE EMAIL
-                    # ============================================
+                    reminders[msg_id] = {
 
-                    sent_emails[msg_id] = {
                         "subject": subject,
-                        "time": str(datetime.now())
+
+                        "time": str(
+                            datetime.now()
+                        ),
+
+                        "meeting_datetime":
+                            stored_meeting_time,
+
+                        "reminder_sent": False
+
                     }
 
                     with open(REMINDER_FILE, "w") as f:
 
                         json.dump(
-                            sent_emails,
+                            reminders,
                             f,
                             indent=4
                         )
@@ -466,5 +547,4 @@ Reply DONE after completing task.
     except Exception as e:
 
         print("❌ ERROR:", e)
-
         time.sleep(60)
