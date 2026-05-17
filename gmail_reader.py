@@ -65,8 +65,8 @@ def send_whatsapp_alert(message):
     response = requests.post(url, headers=headers, json=data)
 
     print("📲 WhatsApp Response:")
-    print(response.text)
-
+    print("WhatsApp Status:", response.status_code)
+    print("WhatsApp Response:", response.text)
 # =========================
 # KEYWORDS
 # =========================
