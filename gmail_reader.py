@@ -1,39 +1,23 @@
 import os
-import os.path
-import pickle
-import asyncio
+import base64
+import requests
 import json
-
-from telegram import Bot
+from email import message_from_bytes
 
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
-# ==========================================
-# GOOGLE CLOUD CREDENTIALS
-# ==========================================
+print("🚀 AI Meeting Guardian Running 24/7...")
+print("📩 Checking Important Emails...")
+
+# =========================
+# GOOGLE CREDENTIALS
+# =========================
 
 google_credentials = json.loads(
     os.environ["GOOGLE_CREDENTIALS"]
 )
-
-# ==========================================
-# TELEGRAM SETTINGS
-# ==========================================
-
-BOT_TOKEN = os.environ["BOT_TOKEN"]
-CHAT_ID = os.environ["CHAT_ID"]
-
-# ==========================================
-# GMAIL SETTINGS
-# ==========================================
-
-SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
-
-# ==========================================
-# CREATE CREDS FROM ENV
-# ==========================================
 
 creds = Credentials(
     None,
@@ -41,191 +25,140 @@ creds = Credentials(
     token_uri="https://oauth2.googleapis.com/token",
     client_id=google_credentials["client_id"],
     client_secret=google_credentials["client_secret"],
-    scopes=SCOPES
+    scopes=["https://www.googleapis.com/auth/gmail.readonly"]
 )
-
-# ==========================================
-# REFRESH TOKEN
-# ==========================================
 
 creds.refresh(Request())
 
-# ==========================================
-# CONNECT GMAIL API
-# ==========================================
+# =========================
+# GMAIL SERVICE
+# =========================
 
-service = build('gmail', 'v1', credentials=creds)
+service = build("gmail", "v1", credentials=creds)
 
-# ==========================================
+# =========================
+# WHATSAPP ALERT FUNCTION
+# =========================
+
+def send_whatsapp_alert(message):
+
+    token = os.environ["WHATSAPP_TOKEN"]
+    phone_number_id = os.environ["PHONE_NUMBER_ID"]
+    recipient = os.environ["WHATSAPP_TO"]
+
+    url = f"https://graph.facebook.com/v22.0/{phone_number_id}/messages"
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "messaging_product": "whatsapp",
+        "to": recipient,
+        "type": "text",
+        "text": {
+            "body": message
+        }
+    }
+
+    response = requests.post(url, headers=headers, json=data)
+
+    print("📲 WhatsApp Response:")
+    print(response.text)
+
+# =========================
+# KEYWORDS
+# =========================
+
+IMPORTANT_KEYWORDS = [
+    "meeting",
+    "interview",
+    "deadline",
+    "assignment",
+    "zoom",
+    "google meet",
+    "task",
+    "important",
+    "urgent",
+    "demo",
+    "submission",
+    "exam"
+]
+
+# =========================
 # FETCH EMAILS
-# ==========================================
+# =========================
 
 results = service.users().messages().list(
-    userId='me',
-    maxResults=20,
-    labelIds=['INBOX']
+    userId="me",
+    maxResults=10,
+    labelIds=["INBOX"]
 ).execute()
 
-messages = results.get('messages', [])
-
-# ==========================================
-# PROCESSED EMAIL TRACKING
-# ==========================================
-
-processed_file = "processed_emails.txt"
-
-if os.path.exists(processed_file):
-
-    with open(processed_file, "r") as f:
-        processed_ids = f.read().splitlines()
-
-else:
-
-    processed_ids = []
-
-# ==========================================
-# FILTER SETTINGS
-# ==========================================
-
-important_senders = [
-    "google",
-    "gemini",
-    "pingnetwork",
-    "gdg",
-    "developers.google",
-    "googlecloud",
-    "student ambassador"
-]
-
-meeting_keywords = [
-    "meeting",
-    "session",
-    "webinar",
-    "workshop",
-    "event",
-    "join",
-    "meet",
-    "zoom",
-    "gmeet",
-    "registration",
-    "demo session",
-    "orientation",
-    "live session",
-    "mandatory",
-    "task"
-]
-
-ignore_keywords = [
-    "security alert",
-    "password",
-    "account access",
-    "privacy",
-    "verification code",
-    "otp",
-    "signin",
-    "sign in",
-    "login",
-    "suspicious activity"
-]
-
-print("\n🔍 Checking Important Emails...\n")
+messages = results.get("messages", [])
 
 important_found = False
 
-# ==========================================
-# TELEGRAM FUNCTION
-# ==========================================
-
-async def send_telegram_message(text):
-
-    bot = Bot(token=BOT_TOKEN)
-
-    await bot.send_message(
-        chat_id=CHAT_ID,
-        text=text
-    )
-
-# ==========================================
-# EMAIL CHECK LOOP
-# ==========================================
+# =========================
+# PROCESS EMAILS
+# =========================
 
 for msg in messages:
 
-    email_id = msg['id']
-
-    # Skip already processed emails
-    if email_id in processed_ids:
-        continue
-
-    # Get full email data
-    message = service.users().messages().get(
-        userId='me',
-        id=email_id
+    txt = service.users().messages().get(
+        userId="me",
+        id=msg["id"],
+        format="raw"
     ).execute()
 
-    headers = message['payload']['headers']
+    raw_data = base64.urlsafe_b64decode(txt["raw"])
 
-    subject = ""
-    sender = ""
+    email_message = message_from_bytes(raw_data)
 
-    # Extract subject + sender
-    for header in headers:
+    subject = email_message["subject"] or ""
+    sender = email_message["from"] or ""
 
-        if header['name'] == 'Subject':
-            subject = header['value']
+    body = ""
 
-        if header['name'] == 'From':
-            sender = header['value']
+    if email_message.is_multipart():
 
-    # Email preview
-    snippet = message.get('snippet', '')
+        for part in email_message.walk():
 
-    # Combine all text
-    full_text = f"{subject} {sender} {snippet}".lower()
+            content_type = part.get_content_type()
 
-    # ==========================================
-    # SMART FILTERING
-    # ==========================================
+            try:
+                payload = part.get_payload(decode=True)
 
-    sender_match = any(
-        word in sender.lower()
-        for word in important_senders
-    )
+                if payload and content_type == "text/plain":
+                    body += payload.decode()
 
-    meeting_match = any(
-        word in full_text
-        for word in meeting_keywords
-    )
+            except:
+                pass
 
-    ignore_match = any(
-        word in full_text
-        for word in ignore_keywords
-    )
+    else:
 
-    # ==========================================
-    # FINAL DETECTION
-    # ==========================================
+        try:
+            payload = email_message.get_payload(decode=True)
 
-    if sender_match and meeting_match and not ignore_match:
+            if payload:
+                body += payload.decode()
+
+        except:
+            pass
+
+    full_text = f"{subject} {body}".lower()
+
+    # =========================
+    # IMPORTANT EMAIL DETECTION
+    # =========================
+
+    if any(keyword in full_text for keyword in IMPORTANT_KEYWORDS):
 
         important_found = True
 
-        print("🔥 IMPORTANT EMAIL FOUND")
-        print("=" * 60)
-
-        print(f"📌 SUBJECT : {subject}")
-        print(f"📩 FROM    : {sender}")
-        print(f"📝 SNIPPET : {snippet}")
-
-        print("=" * 60)
-        print()
-
-        # ==========================================
-        # TELEGRAM ALERT
-        # ==========================================
-
-        telegram_message = f"""
-🚨 IMPORTANT EMAIL FOUND
+        whatsapp_message = f"""
+🔥 IMPORTANT EMAIL FOUND
 
 📌 SUBJECT:
 {subject}
@@ -234,27 +167,20 @@ for msg in messages:
 {sender}
 
 📝 SNIPPET:
-{snippet[:200]}
+{body[:300]}
 
-🔥 CHECK GMAIL NOW
+🤖 AI Meeting Guardian
 """
 
-        print("📲 Sending Telegram Alert...")
+        print("=" * 60)
+        print(whatsapp_message)
+        print("=" * 60)
 
-        asyncio.run(
-            send_telegram_message(
-                telegram_message
-            )
-        )
+        send_whatsapp_alert(whatsapp_message)
 
-        # Save processed email ID
-        with open(processed_file, "a") as f:
-            f.write(email_id + "\n")
-
-# ==========================================
+# =========================
 # NO IMPORTANT EMAILS
-# ==========================================
+# =========================
 
 if not important_found:
-
     print("❌ No important emails found.")
