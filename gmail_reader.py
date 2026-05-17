@@ -5,7 +5,7 @@ import requests
 import json
 import time
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from email import message_from_bytes
 
 from google.oauth2.credentials import Credentials
@@ -13,7 +13,7 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
 print("🚀 Google AI Guardian Running...")
-print("📩 Monitoring Google Updates...")
+print("📩 Monitoring Ambassador Updates...")
 
 # =========================
 # REMINDER FILE
@@ -49,6 +49,10 @@ def save_reminders():
 google_credentials = json.loads(
     os.environ["GOOGLE_CREDENTIALS"]
 )
+
+# =========================
+# GOOGLE AUTH
+# =========================
 
 creds = Credentials(
     None,
@@ -107,25 +111,34 @@ def send_whatsapp_alert(message):
 
     print("\n📲 WhatsApp Sent")
     print("Status:", response.status_code)
+    print("Response:", response.text)
 
 # =========================
-# GOOGLE KEYWORDS
+# TRUSTED SENDERS
 # =========================
 
-GOOGLE_KEYWORDS = [
+TRUSTED_SENDERS = [
 
-    "gemini",
-    "google ambassador",
-    "google student ambassador",
-    "google event",
-    "google webinar",
-    "google meet",
-    "google session",
-    "google workshop",
+    "pingnetwork.in",
+    "google.com",
+    "google.dev",
+    "developers.google.com"
+
+]
+
+# =========================
+# IMPORTANT KEYWORDS
+# =========================
+
+IMPORTANT_SUBJECTS = [
+
     "mandatory demo session",
-    "google support",
-    "google ai",
-    "google developers"
+    "task 1",
+    "google student ambassador",
+    "career glow-up",
+    "nano banana",
+    "ambassador",
+    "demo session"
 
 ]
 
@@ -150,6 +163,10 @@ while True:
         ).execute()
 
         messages = results.get("messages", [])
+
+        # =========================
+        # PROCESS EMAILS
+        # =========================
 
         for msg in messages:
 
@@ -196,10 +213,12 @@ while True:
                                 errors="ignore"
                             )
 
+                            # TEXT
                             if content_type == "text/plain":
 
                                 body += decoded_payload
 
+                            # HTML
                             elif content_type == "text/html":
 
                                 soup = BeautifulSoup(
@@ -240,29 +259,50 @@ while True:
                 except:
                     pass
 
+            # =========================
+            # CLEAN BODY
+            # =========================
+
             body = " ".join(body.split())
 
-            full_text = f"{subject} {sender} {body}".lower()
+            sender_lower = sender.lower()
+
+            full_content = f"""
+            {subject}
+            {body}
+            """.lower()
 
             # =========================
-            # GOOGLE EMAIL DETECTION
+            # DETECT IMPORTANT EMAILS
             # =========================
 
-            if any(
-                keyword in full_text
-                for keyword in GOOGLE_KEYWORDS
-            ):
+            trusted_sender = any(
+                domain in sender_lower
+                for domain in TRUSTED_SENDERS
+            )
+
+            important_subject = any(
+                keyword in full_content
+                for keyword in IMPORTANT_SUBJECTS
+            )
+
+            if trusted_sender and important_subject:
 
                 # =========================
-                # NEW EMAIL
+                # SKIP OLD PROCESSED EMAILS
                 # =========================
 
-                if message_id not in reminders:
+                if message_id in reminders:
+                    continue
 
-                    print("\n🔥 GOOGLE UPDATE FOUND")
+                print("\n🔥 IMPORTANT AMBASSADOR EMAIL FOUND")
 
-                    whatsapp_message = f"""
-🚨 GOOGLE UPDATE
+                # =========================
+                # WHATSAPP MESSAGE
+                # =========================
+
+                whatsapp_message = f"""
+🚨 IMPORTANT AMBASSADOR UPDATE
 
 📌 Subject:
 {subject}
@@ -279,34 +319,40 @@ while True:
 🤖 Google AI Guardian
 """
 
-                    print("=" * 60)
-                    print(whatsapp_message)
-                    print("=" * 60)
+                print("=" * 60)
+                print(whatsapp_message)
+                print("=" * 60)
 
-                    send_whatsapp_alert(
-                        whatsapp_message
-                    )
+                # =========================
+                # SEND WHATSAPP
+                # =========================
 
-                    # =========================
-                    # SAVE REMINDER
-                    # =========================
+                send_whatsapp_alert(
+                    whatsapp_message
+                )
 
-                    reminders[message_id] = {
+                # =========================
+                # SAVE REMINDER
+                # =========================
 
-                        "subject": subject,
-                        "sender": sender,
-                        "body": body[:500],
+                reminders[message_id] = {
 
-                        "created_at":
-                        datetime.now().isoformat(),
+                    "subject": subject,
 
-                        "last_sent":
-                        datetime.now().isoformat(),
+                    "sender": sender,
 
-                        "count": 1
-                    }
+                    "body": body[:500],
 
-                    save_reminders()
+                    "created_at":
+                    datetime.now().isoformat(),
+
+                    "last_sent":
+                    datetime.now().isoformat(),
+
+                    "count": 1
+                }
+
+                save_reminders()
 
         # =========================
         # SEND REMINDERS
@@ -342,7 +388,7 @@ while True:
             ):
 
                 print(
-                    f"✅ Stopped reminders for: {reminder['subject']}"
+                    f"\n✅ Stopped reminders for: {reminder['subject']}"
                 )
 
                 del reminders[message_id]
@@ -362,12 +408,12 @@ while True:
             if minutes_since_last >= 30:
 
                 reminder_message = f"""
-⏰ GOOGLE REMINDER
+⏰ AMBASSADOR REMINDER
 
 📌 Subject:
 {reminder['subject']}
 
-⚡ Please check this update.
+⚡ Please check this important update.
 
 🔔 Reminder:
 {reminder_count}/6
@@ -397,7 +443,7 @@ while True:
         print(str(e))
 
     # =========================
-    # CHECK EVERY 5 MINS
+    # WAIT 5 MINS
     # =========================
 
     print("\n⏳ Waiting 5 mins...\n")
