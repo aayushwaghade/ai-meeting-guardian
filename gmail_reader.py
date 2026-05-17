@@ -3,8 +3,10 @@ import os
 import base64
 import requests
 import json
-import time
 import re
+import time
+import dateparser
+
 from datetime import datetime, timedelta
 from email import message_from_bytes
 
@@ -12,8 +14,7 @@ from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
-print("🚀 Bot Started Successfully")
-print("🤖 Google AI Guardian Running...")
+print("🚀 Google AI Guardian Running...")
 print("📩 Monitoring Ambassador Updates...")
 
 # ============================================
@@ -39,10 +40,43 @@ creds.refresh(Request())
 # GMAIL SERVICE
 # ============================================
 
-service = build("gmail", "v1", credentials=creds)
+service = build(
+    "gmail",
+    "v1",
+    credentials=creds
+)
 
 # ============================================
-# WHATSAPP FUNCTION
+# REMINDER STORAGE
+# ============================================
+
+REMINDER_FILE = "reminders.json"
+
+# ============================================
+# LOAD REMINDERS
+# ============================================
+
+def load_reminders():
+
+    if not os.path.exists(REMINDER_FILE):
+
+        with open(REMINDER_FILE, "w") as f:
+            json.dump({}, f)
+
+    with open(REMINDER_FILE, "r") as f:
+        return json.load(f)
+
+# ============================================
+# SAVE REMINDERS
+# ============================================
+
+def save_reminders(data):
+
+    with open(REMINDER_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
+# ============================================
+# WHATSAPP ALERT FUNCTION
 # ============================================
 
 def send_whatsapp_alert(message):
@@ -78,242 +112,122 @@ def send_whatsapp_alert(message):
     print(response.text)
 
 # ============================================
-# OPENROUTER AI ANALYSIS
-# ============================================
-
-def analyze_email_with_ai(subject, body):
-
-    try:
-
-        api_key = os.environ["OPENROUTER_API_KEY"]
-
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-
-        prompt = f"""
-Analyze this email carefully.
-
-Return ONLY in this format:
-
-SUMMARY:
-<short summary>
-
-PRIORITY:
-HIGH / MEDIUM / LOW
-
-MEETING:
-<meeting date and time if exists otherwise N/A>
-
-DEADLINE:
-<deadline if exists otherwise N/A>
-
-EMAIL:
-
-Subject:
-{subject}
-
-Body:
-{body[:3000]}
-"""
-
-        payload = {
-            "model": "openai/gpt-3.5-turbo",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ]
-        }
-
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers=headers,
-            json=payload
-        )
-
-        result = response.json()
-
-        ai_text = result["choices"][0]["message"]["content"]
-
-        return ai_text
-
-    except Exception as e:
-
-        print("❌ AI ERROR:", e)
-
-        return """
-SUMMARY:
-Could not analyze email
-
-PRIORITY:
-MEDIUM
-
-MEETING:
-N/A
-
-DEADLINE:
-N/A
-"""
-
-# ============================================
 # TRUSTED SENDERS
 # ============================================
 
 TRUSTED_SENDERS = [
 
     "google",
-    "pingnetwork",
-    "pingnetwork.in",
-    "ambassador",
     "gemini",
+    "ambassador",
     "gdg",
-    "developer",
+    "developers.google",
+    "googlecloud",
+    "women techmakers",
     "tensorflow",
+    "pingnetwork",
+    "mlsa",
     "github",
-    "google for developers",
-    "googlecommunity",
-    "noreply",
-    "no-reply",
-    "mail.google.com"
-
+    "hack2skill"
 ]
 
 # ============================================
-# IMPORTANT SUBJECTS
+# IMPORTANT SUBJECT KEYWORDS
 # ============================================
 
-IMPORTANT_SUBJECTS = [
+IMPORTANT_SUBJECT_KEYWORDS = [
 
-    "mandatory demo session",
-    "task 1",
-    "google student ambassador",
-    "career glow-up",
-    "nano banana",
-    "ambassador",
-    "demo session",
-    "google",
-    "gemini",
-    "pixel phone",
-    "submission",
-    "task expectations",
-    "event flow",
+    "mandatory",
+    "demo",
+    "meeting",
     "session",
-    "career",
-    "glow-up",
+    "deadline",
     "task",
-    "may task",
-    "google ambassador"
-
+    "submission",
+    "interview",
+    "assignment",
+    "exam",
+    "google ambassador",
+    "career glow-up",
+    "nano banana"
 ]
 
 # ============================================
-# STORAGE FILE
-# ============================================
-
-REMINDER_FILE = "reminders.json"
-
-if not os.path.exists(REMINDER_FILE):
-
-    with open(REMINDER_FILE, "w") as f:
-        json.dump({}, f)
-
-with open(REMINDER_FILE, "r") as f:
-    reminders = json.load(f)
-
-# ============================================
-# EXTRACT MEETING TIME
+# MEETING TIME EXTRACTION
 # ============================================
 
 def extract_meeting_datetime(text):
 
-    day_match = re.search(
-        r"(monday|tuesday|wednesday|thursday|friday|saturday|sunday)",
-        text,
-        re.IGNORECASE
-    )
+    patterns = [
 
-    time_match = re.search(
-        r"(\d{1,2}:\d{2}\s?(AM|PM|am|pm))",
-        text
-    )
+        r"(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday).*?\d{1,2}:\d{2}\s?(AM|PM|am|pm)",
 
-    if day_match and time_match:
+        r"\d{1,2}\s(January|February|March|April|May|June|July|August|September|October|November|December).*?\d{1,2}:\d{2}\s?(AM|PM|am|pm)",
 
-        meeting_day = day_match.group(1)
-        meeting_time = time_match.group(1)
+        r"(tomorrow).*?\d{1,2}:\d{2}\s?(AM|PM|am|pm)"
+    ]
 
-        return f"{meeting_day} {meeting_time}"
+    for pattern in patterns:
+
+        match = re.search(
+            pattern,
+            text,
+            re.IGNORECASE
+        )
+
+        if match:
+
+            detected_text = match.group(0)
+
+            parsed_date = dateparser.parse(
+                detected_text,
+                settings={
+                    "PREFER_DATES_FROM": "future"
+                }
+            )
+
+            if parsed_date:
+                return parsed_date
 
     return None
 
 # ============================================
-# CHECK REMINDERS
+# CHECK IF IMPORTANT
 # ============================================
 
-def check_meeting_reminders():
+def is_important_email(subject, sender, body):
 
-    current_time = datetime.now()
+    sender_lower = sender.lower()
+    subject_lower = subject.lower()
+    body_lower = body.lower()
 
-    updated = False
+    trusted_sender = any(
+        keyword in sender_lower
+        for keyword in TRUSTED_SENDERS
+    )
 
-    for msg_id, data in reminders.items():
+    important_subject = any(
+        keyword in subject_lower
+        for keyword in IMPORTANT_SUBJECT_KEYWORDS
+    )
 
-        if "meeting_datetime" not in data:
-            continue
+    important_body = any(
+        keyword in body_lower
+        for keyword in IMPORTANT_SUBJECT_KEYWORDS
+    )
 
-        if data.get("reminder_sent"):
-            continue
+    print("\n----------------------")
+    print(f"📌 SUBJECT: {subject}")
+    print(f"👤 SENDER: {sender}")
+    print(f"✅ Trusted Sender: {trusted_sender}")
+    print(f"🔥 Important Subject: {important_subject}")
+    print("----------------------")
 
-        try:
-
-            meeting_time = datetime.fromisoformat(
-                data["meeting_datetime"]
-            )
-
-            reminder_time = meeting_time - timedelta(minutes=30)
-
-            if current_time >= reminder_time:
-
-                reminder_message = f"""
-⏰ MEETING REMINDER
-
-📌 Subject:
-{data['subject']}
-
-📅 Meeting starts in 30 mins
-
-🕒 Time:
-{meeting_time.strftime('%d %b %Y %I:%M %p')}
-
-🤖 Google AI Guardian
-"""
-
-                send_whatsapp_alert(
-                    reminder_message
-                )
-
-                data["reminder_sent"] = True
-
-                updated = True
-
-                print("✅ Reminder Sent")
-
-        except Exception as e:
-
-            print("❌ Reminder Error:", e)
-
-    if updated:
-
-        with open(REMINDER_FILE, "w") as f:
-
-            json.dump(
-                reminders,
-                f,
-                indent=4
-            )
+    return (
+        trusted_sender
+        or important_subject
+        or important_body
+    )
 
 # ============================================
 # MAIN LOOP
@@ -321,174 +235,207 @@ def check_meeting_reminders():
 
 while True:
 
-    try:
+    print("\n🔎 Checking Inbox...")
 
-        print("\n🔎 Checking Inbox...")
+    reminders = load_reminders()
+
+    # ============================================
+    # CHECK EXISTING REMINDERS
+    # ============================================
+
+    for reminder_id in reminders:
+
+        reminder = reminders[reminder_id]
+
+        if reminder["completed"]:
+            continue
+
+        if reminder["meeting_reminder_sent"]:
+            continue
+
+        meeting_time = datetime.fromisoformat(
+            reminder["meeting_time"]
+        )
+
+        current_time = datetime.now()
+
+        time_difference = (
+            meeting_time - current_time
+        ).total_seconds()
 
         # ============================================
-        # CHECK REMINDERS FIRST
+        # SEND 30 MIN REMINDER
         # ============================================
 
-        check_meeting_reminders()
+        if 0 < time_difference <= 1800:
 
-        results = service.users().messages().list(
+            reminder_message = f"""
+⏰ MEETING REMINDER
+
+📌 Subject:
+{reminder['subject']}
+
+🚀 Starts in less than 30 minutes
+
+📅 Time:
+{meeting_time.strftime('%d %B %Y, %I:%M %p')}
+
+Reply DONE after attending meeting.
+
+🤖 Google AI Guardian
+"""
+
+            send_whatsapp_alert(reminder_message)
+
+            reminders[reminder_id][
+                "meeting_reminder_sent"
+            ] = True
+
+            save_reminders(reminders)
+
+            print(reminder_message)
+
+    # ============================================
+    # FETCH EMAILS
+    # ============================================
+
+    results = service.users().messages().list(
+        userId="me",
+        maxResults=10,
+        labelIds=["INBOX"]
+    ).execute()
+
+    messages = results.get("messages", [])
+
+    # ============================================
+    # PROCESS EMAILS
+    # ============================================
+
+    for msg in messages:
+
+        # Skip already processed
+        if msg["id"] in reminders:
+            continue
+
+        txt = service.users().messages().get(
             userId="me",
-            maxResults=10,
-            labelIds=["INBOX"]
+            id=msg["id"],
+            format="raw"
         ).execute()
 
-        messages = results.get("messages", [])
+        raw_data = base64.urlsafe_b64decode(
+            txt["raw"]
+        )
 
-        for msg in messages:
+        email_message = message_from_bytes(
+            raw_data
+        )
 
-            msg_id = msg["id"]
+        subject = email_message["subject"] or ""
+        sender = email_message["from"] or ""
 
-            txt = service.users().messages().get(
-                userId="me",
-                id=msg_id,
-                format="raw"
-            ).execute()
+        body = ""
 
-            raw_data = base64.urlsafe_b64decode(
-                txt["raw"]
-            )
+        # ============================================
+        # EXTRACT EMAIL BODY
+        # ============================================
 
-            email_message = message_from_bytes(
-                raw_data
-            )
+        if email_message.is_multipart():
 
-            subject = email_message["subject"] or ""
-            sender = email_message["from"] or ""
+            for part in email_message.walk():
 
-            body = ""
-
-            # ============================================
-            # READ EMAIL BODY
-            # ============================================
-
-            if email_message.is_multipart():
-
-                for part in email_message.walk():
-
-                    content_type = part.get_content_type()
-
-                    try:
-
-                        payload = part.get_payload(
-                            decode=True
-                        )
-
-                        if payload:
-
-                            decoded = payload.decode(
-                                errors="ignore"
-                            )
-
-                            if content_type == "text/plain":
-
-                                body += decoded
-
-                            elif content_type == "text/html":
-
-                                soup = BeautifulSoup(
-                                    decoded,
-                                    "html.parser"
-                                )
-
-                                clean_text = soup.get_text(
-                                    separator=" "
-                                )
-
-                                body += clean_text
-
-                    except:
-                        pass
-
-            else:
+                content_type = part.get_content_type()
 
                 try:
 
-                    payload = email_message.get_payload(
+                    payload = part.get_payload(
                         decode=True
                     )
 
                     if payload:
 
-                        body += payload.decode(
+                        decoded = payload.decode(
                             errors="ignore"
                         )
+
+                        if content_type == "text/plain":
+                            body += decoded
+
+                        elif content_type == "text/html":
+
+                            soup = BeautifulSoup(
+                                decoded,
+                                "html.parser"
+                            )
+
+                            body += soup.get_text()
 
                 except:
                     pass
 
-            full_text = f"{subject} {body}".lower()
+        else:
 
-            # ============================================
-            # FILTER LOGIC
-            # ============================================
+            try:
 
-            sender_lower = sender.lower()
+                payload = email_message.get_payload(
+                    decode=True
+                )
 
-            trusted_sender = any(
-                keyword in sender_lower
-                for keyword in TRUSTED_SENDERS
-            )
+                if payload:
 
-            important_subject = any(
-                keyword.lower() in full_text
-                for keyword in IMPORTANT_SUBJECTS
-            )
-
-            print("\n-------------------------")
-            print("📌 SUBJECT:", subject)
-            print("👤 SENDER:", sender)
-            print("✅ Trusted Sender:", trusted_sender)
-            print("🔥 Important Subject:", important_subject)
-            print("-------------------------")
-
-            # ============================================
-            # IMPORTANT EMAIL
-            # ============================================
-
-            if trusted_sender and important_subject:
-
-                if msg_id not in reminders:
-
-                    print("✅ IMPORTANT EMAIL DETECTED")
-
-                    ai_analysis = analyze_email_with_ai(
-                        subject,
-                        body[:3000]
+                    decoded = payload.decode(
+                        errors="ignore"
                     )
 
-                    meeting_datetime = extract_meeting_datetime(
-                        body
-                    )
+                    body += decoded
 
-                    meeting_text = ""
+            except:
+                pass
 
-                    stored_meeting_time = None
+        # ============================================
+        # IMPORTANT EMAIL CHECK
+        # ============================================
 
-                    if meeting_datetime:
+        if not is_important_email(
+            subject,
+            sender,
+            body
+        ):
+            continue
 
-                        meeting_text = f"""
+        # ============================================
+        # MEETING DATETIME EXTRACTION
+        # ============================================
 
-📅 Meeting Detected:
-{meeting_datetime}
+        meeting_datetime = extract_meeting_datetime(
+            body
+        )
 
-⏰ Auto reminder scheduled
-"""
+        # ============================================
+        # IF MEETING FOUND
+        # ============================================
 
-                        # TEMP SAMPLE TIME
-                        # Replace later with real parser
+        if meeting_datetime:
 
-                        stored_meeting_time = (
-                            datetime.now()
-                            + timedelta(minutes=35)
-                        ).isoformat()
+            stored_meeting_time = (
+                meeting_datetime.isoformat()
+            )
 
-                    whatsapp_message = f"""
-🚨 IMPORTANT GOOGLE UPDATE
+            reminders[msg["id"]] = {
+
+                "subject": subject,
+
+                "meeting_time": stored_meeting_time,
+
+                "meeting_reminder_sent": False,
+
+                "completed": False
+            }
+
+            save_reminders(reminders)
+
+            detected_message = f"""
+📅 MEETING DETECTED
 
 📌 Subject:
 {subject}
@@ -496,55 +443,64 @@ while True:
 👤 From:
 {sender}
 
-🧠 AI Analysis:
-{ai_analysis}
+⏰ Meeting Time:
+{meeting_datetime.strftime('%d %B %Y, %I:%M %p')}
 
-{meeting_text}
-
-🤖 Google AI Guardian
+✅ 30-minute reminder scheduled
 
 Reply DONE after completing task.
+
+🤖 Google AI Guardian
 """
 
-                    print("\n" + "=" * 60)
-                    print(whatsapp_message)
-                    print("=" * 60)
+            print(detected_message)
 
-                    send_whatsapp_alert(
-                        whatsapp_message
-                    )
+            send_whatsapp_alert(
+                detected_message
+            )
 
-                    reminders[msg_id] = {
+        # ============================================
+        # NORMAL IMPORTANT EMAIL
+        # ============================================
 
-                        "subject": subject,
+        else:
 
-                        "time": str(
-                            datetime.now()
-                        ),
+            whatsapp_message = f"""
+🚨 IMPORTANT UPDATE
 
-                        "meeting_datetime":
-                            stored_meeting_time,
+📌 Subject:
+{subject}
 
-                        "reminder_sent": False
+👤 From:
+{sender}
 
-                    }
+📝 Details:
+{body[:500]}
 
-                    with open(REMINDER_FILE, "w") as f:
+⏰ Reminder every 30 mins
 
-                        json.dump(
-                            reminders,
-                            f,
-                            indent=4
-                        )
+🤖 Google AI Guardian
+"""
 
-                else:
+            print(whatsapp_message)
 
-                    print("⏭ Already alerted before")
+            send_whatsapp_alert(
+                whatsapp_message
+            )
 
-        print("\n⏳ Waiting 5 mins...")
-        time.sleep(300)
+            reminders[msg["id"]] = {
 
-    except Exception as e:
+                "subject": subject,
 
-        print("❌ ERROR:", e)
-        time.sleep(60)
+                "meeting_time": "",
+
+                "meeting_reminder_sent": False,
+
+                "completed": False
+            }
+
+            save_reminders(reminders)
+
+    print("\n⏳ Waiting 5 mins...\n")
+
+    time.sleep(300)
