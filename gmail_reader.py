@@ -1,106 +1,75 @@
 import os
+import json
 import time
-import requests
+import base64
 
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
-WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
-PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
-YOUR_PHONE_NUMBER = os.getenv("YOUR_PHONE_NUMBER")
-
 KEYWORDS = [
     "google student ambassador",
     "google ambassador",
-    "gemini",
-    "mandatory",
-    "meeting",
-    "orientation",
-    "bootcamp",
-    "session",
-    "deadline"
+    "gemini ambassador",
+    "google campus ambassador",
+    "student ambassador",
+    "google developer student club",
+    "gdsc",
+    "google ai",
+    "google community",
 ]
 
-processed_emails = set()
+PROCESSED_FILE = "processed_emails.txt"
 
 
-def authenticate_gmail():
-    creds = None
+def load_credentials():
+    token_json = os.getenv("GOOGLE_TOKEN")
 
-    if os.path.exists("token.json"):
-        creds = Credentials.from_authorized_user_file(
-            "token.json",
-            SCOPES
-        )
+    if not token_json:
+        raise Exception("GOOGLE_TOKEN variable missing in Railway")
 
-    if not creds or not creds.valid:
+    token_data = json.loads(token_json)
 
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+    creds = Credentials.from_authorized_user_info(token_data, SCOPES)
 
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                "credentials.json",
-                SCOPES
-            )
-
-            creds = flow.run_local_server(port=0)
-
-        with open("token.json", "w") as token:
-            token.write(creds.to_json())
-
-    return build("gmail", "v1", credentials=creds)
+    return creds
 
 
-def send_whatsapp_message(message_text):
-
-    url = f"https://graph.facebook.com/v20.0/{PHONE_NUMBER_ID}/messages"
-
-    headers = {
-        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json"
-    }
-
-    data = {
-        "messaging_product": "whatsapp",
-        "to": YOUR_PHONE_NUMBER,
-        "type": "text",
-        "text": {
-            "body": message_text
-        }
-    }
-
-    response = requests.post(
-        url,
-        headers=headers,
-        json=data
-    )
-
-    print(response.text)
+def get_service():
+    creds = load_credentials()
+    service = build("gmail", "v1", credentials=creds)
+    return service
 
 
-def contains_keywords(text):
+def load_processed():
+    if not os.path.exists(PROCESSED_FILE):
+        return set()
 
-    text = text.lower()
+    with open(PROCESSED_FILE, "r") as f:
+        return set(line.strip() for line in f.readlines())
+
+
+def save_processed(email_id):
+    with open(PROCESSED_FILE, "a") as f:
+        f.write(email_id + "\n")
+
+
+def is_important(subject):
+    subject = subject.lower()
 
     for keyword in KEYWORDS:
-        if keyword in text:
+        if keyword.lower() in subject:
             return True
 
     return False
 
 
 def check_inbox():
-
     try:
-
         print("🔎 Checking Inbox...")
 
-        service = authenticate_gmail()
+        service = get_service()
 
         results = service.users().messages().list(
             userId="me",
@@ -109,67 +78,57 @@ def check_inbox():
 
         messages = results.get("messages", [])
 
+        processed = load_processed()
+
         for msg in messages:
 
-            if msg["id"] in processed_emails:
+            email_id = msg["id"]
+
+            if email_id in processed:
                 continue
 
             message = service.users().messages().get(
                 userId="me",
-                id=msg["id"]
+                id=email_id
             ).execute()
 
-            payload = message.get("payload", {})
-            headers = payload.get("headers", [])
+            headers = message["payload"]["headers"]
 
             subject = "No Subject"
             sender = "Unknown Sender"
 
             for header in headers:
 
-                name = header.get("name", "")
-                value = header.get("value", "")
+                if header["name"] == "Subject":
+                    subject = header["value"]
 
-                if name == "Subject":
-                    subject = value
+                if header["name"] == "From":
+                    sender = header["value"]
 
-                if name == "From":
-                    sender = value
+            important = is_important(subject)
 
-            print("----------------------")
+            print("\n========================")
             print(f"📌 SUBJECT: {subject}")
             print(f"👤 SENDER: {sender}")
+            print(f"🔥 Important Subject: {important}")
+            print("========================\n")
 
-            combined_text = f"{subject} {sender}"
-
-            if contains_keywords(combined_text):
-
-                whatsapp_message = f"""
-🚨 GOOGLE AMBASSADOR UPDATE
-
-📌 Subject:
-{subject}
-
-👤 Sender:
-{sender}
-"""
-
-                send_whatsapp_message(whatsapp_message)
-
-            processed_emails.add(msg["id"])
+            save_processed(email_id)
 
     except Exception as e:
-
-        print("❌ ERROR:")
-        print(str(e))
+        print("\n❌ ERROR:\n")
+        print(e)
 
 
 def start_monitoring():
-
     while True:
-
         check_inbox()
-
-        print("⏳ Waiting 5 mins...")
-
+        print("⏳ Waiting 5 mins...\n")
         time.sleep(300)
+
+
+print("🚀 Google AI Guardian Running...")
+print("📬 Monitoring Google Ambassador Updates...")
+print("🤖 Bot Started Successfully\n")
+
+start_monitoring()
