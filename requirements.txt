@@ -9,3 +9,4 @@ openai
 dateparser
 flask
 gunicorn
+requests

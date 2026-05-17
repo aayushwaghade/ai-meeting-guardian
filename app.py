@@ -5,16 +5,21 @@ from gmail_reader import check_gmail
 
 app = Flask(__name__)
 
-# ==============================
-# WHATSAPP WEBHOOK
-# ==============================
+# =========================
+# HOME ROUTE
+# =========================
 
-@app.route("/", methods=["GET"])
+@app.route("/")
 def home():
     return "AI Meeting Guardian Running"
 
+# =========================
+# WHATSAPP WEBHOOK
+# =========================
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
+
     data = request.json
 
     print("\n📩 Incoming WhatsApp Reply")
@@ -34,21 +39,22 @@ def webhook():
             print("✅ Task marked completed!")
 
     except Exception as e:
-        print("⚠️ Error reading reply:", e)
+        print("⚠️ Error:", e)
 
     return "ok", 200
 
-# ==============================
-# BACKGROUND BOT LOOP
-# ==============================
+# =========================
+# MAIN BOT LOOP
+# =========================
 
-def run_bot():
+def bot_loop():
 
     print("🚀 Bot Started Successfully")
 
     while True:
 
         try:
+
             print("\n🚀 AI Meeting Guardian Checking Gmail...\n")
 
             check_gmail()
@@ -56,19 +62,28 @@ def run_bot():
             print("\n⏳ Waiting 5 mins...\n")
 
         except Exception as e:
-            print("❌ ERROR:", e)
+
+            print("❌ BOT ERROR:", e)
 
         time.sleep(300)
 
-# ==============================
-# START BOT THREAD
-# ==============================
+# =========================
+# START BACKGROUND THREAD
+# =========================
 
-threading.Thread(target=run_bot).start()
+thread = threading.Thread(target=bot_loop)
 
-# ==============================
+thread.daemon = True
+
+thread.start()
+
+# =========================
 # START FLASK SERVER
-# ==============================
+# =========================
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+
+    app.run(
+        host="0.0.0.0",
+        port=5000
+    )
