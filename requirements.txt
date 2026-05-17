@@ -1,12 +1,9 @@
+flask
+gunicorn
 google-api-python-client
 google-auth
 google-auth-oauthlib
 google-auth-httplib2
-python-telegram-bot
-schedule
-beautifulsoup4
-openai
-dateparser
-flask
-gunicorn
 requests
+selenium
+webdriver-manager
