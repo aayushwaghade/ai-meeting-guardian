@@ -112,44 +112,34 @@ def send_whatsapp_alert(message):
     print(response.text)
 
 # ============================================
-# TRUSTED SENDERS
+# STRICT TRUSTED SENDERS
 # ============================================
 
 TRUSTED_SENDERS = [
 
     "google",
-    "gemini",
-    "ambassador",
-    "gdg",
     "developers.google",
-    "googlecloud",
-    "women techmakers",
-    "tensorflow",
     "pingnetwork",
-    "mlsa",
-    "github",
-    "hack2skill"
+    "googlecloud",
+    "gdg",
+    "women techmakers",
+    "tensorflow"
 ]
 
 # ============================================
-# IMPORTANT SUBJECT KEYWORDS
+# STRICT IMPORTANT KEYWORDS
 # ============================================
 
 IMPORTANT_SUBJECT_KEYWORDS = [
 
-    "mandatory",
-    "demo",
-    "meeting",
-    "session",
-    "deadline",
-    "task",
-    "submission",
-    "interview",
-    "assignment",
-    "exam",
     "google ambassador",
+    "mandatory demo session",
     "career glow-up",
-    "nano banana"
+    "nano banana",
+    "ambassador task",
+    "task 1",
+    "submission deadline",
+    "google student ambassador"
 ]
 
 # ============================================
@@ -192,7 +182,7 @@ def extract_meeting_datetime(text):
     return None
 
 # ============================================
-# CHECK IF IMPORTANT
+# STRICT EMAIL FILTER
 # ============================================
 
 def is_important_email(subject, sender, body):
@@ -223,10 +213,14 @@ def is_important_email(subject, sender, body):
     print(f"🔥 Important Subject: {important_subject}")
     print("----------------------")
 
+    # STRICT FILTER
     return (
         trusted_sender
-        or important_subject
-        or important_body
+        and
+        (
+            important_subject
+            or important_body
+        )
     )
 
 # ============================================
@@ -240,7 +234,7 @@ while True:
     reminders = load_reminders()
 
     # ============================================
-    # CHECK EXISTING REMINDERS
+    # CHECK MEETING REMINDERS
     # ============================================
 
     for reminder_id in reminders:
@@ -251,6 +245,9 @@ while True:
             continue
 
         if reminder["meeting_reminder_sent"]:
+            continue
+
+        if reminder["meeting_time"] == "":
             continue
 
         meeting_time = datetime.fromisoformat(
@@ -313,7 +310,7 @@ Reply DONE after attending meeting.
 
     for msg in messages:
 
-        # Skip already processed
+        # Skip already processed emails
         if msg["id"] in reminders:
             continue
 
@@ -393,7 +390,7 @@ Reply DONE after attending meeting.
                 pass
 
         # ============================================
-        # IMPORTANT EMAIL CHECK
+        # FILTER IMPORTANT EMAILS
         # ============================================
 
         if not is_important_email(
@@ -404,7 +401,7 @@ Reply DONE after attending meeting.
             continue
 
         # ============================================
-        # MEETING DATETIME EXTRACTION
+        # DETECT MEETING TIME
         # ============================================
 
         meeting_datetime = extract_meeting_datetime(
@@ -412,7 +409,7 @@ Reply DONE after attending meeting.
         )
 
         # ============================================
-        # IF MEETING FOUND
+        # IF MEETING DETECTED
         # ============================================
 
         if meeting_datetime:
@@ -460,13 +457,13 @@ Reply DONE after completing task.
             )
 
         # ============================================
-        # NORMAL IMPORTANT EMAIL
+        # NORMAL IMPORTANT UPDATE
         # ============================================
 
         else:
 
             whatsapp_message = f"""
-🚨 IMPORTANT UPDATE
+🚨 IMPORTANT AMBASSADOR UPDATE
 
 📌 Subject:
 {subject}
@@ -476,8 +473,6 @@ Reply DONE after completing task.
 
 📝 Details:
 {body[:500]}
-
-⏰ Reminder every 30 mins
 
 🤖 Google AI Guardian
 """
