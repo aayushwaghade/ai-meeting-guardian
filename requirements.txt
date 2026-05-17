@@ -8,3 +8,4 @@ beautifulsoup4
 openai
 dateparser
 flask
+gunicorn
