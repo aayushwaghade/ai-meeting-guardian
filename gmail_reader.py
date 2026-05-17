@@ -4,8 +4,9 @@ import base64
 import requests
 import json
 import time
+import re
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from email import message_from_bytes
 
 from google.oauth2.credentials import Credentials
@@ -40,7 +41,7 @@ else:
 def save_reminders():
 
     with open(REMINDER_FILE, "w") as f:
-        json.dump(reminders, f)
+        json.dump(reminders, f, indent=4)
 
 # =========================
 # GOOGLE CREDENTIALS
@@ -138,9 +139,65 @@ IMPORTANT_SUBJECTS = [
     "career glow-up",
     "nano banana",
     "ambassador",
-    "demo session"
+    "demo session",
+    "google",
+    "gemini"
 
 ]
+
+# =========================
+# EXTRACT MEETING TIME
+# =========================
+
+def extract_meeting_time(text):
+
+    patterns = [
+
+        r'(\d{1,2}:\d{2}\s?(AM|PM))',
+        r'(\d{1,2}\s?(AM|PM))'
+
+    ]
+
+    for pattern in patterns:
+
+        match = re.search(
+            pattern,
+            text,
+            re.IGNORECASE
+        )
+
+        if match:
+
+            return match.group(1)
+
+    return None
+
+# =========================
+# EXTRACT DAY
+# =========================
+
+def extract_day(text):
+
+    days = [
+
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday"
+
+    ]
+
+    text_lower = text.lower()
+
+    for day in days:
+
+        if day in text_lower:
+            return day.capitalize()
+
+    return None
 
 # =========================
 # MAIN LOOP
@@ -213,12 +270,10 @@ while True:
                                 errors="ignore"
                             )
 
-                            # TEXT
                             if content_type == "text/plain":
 
                                 body += decoded_payload
 
-                            # HTML
                             elif content_type == "text/html":
 
                                 soup = BeautifulSoup(
@@ -288,14 +343,22 @@ while True:
 
             if trusted_sender and important_subject:
 
-                # =========================
-                # SKIP OLD PROCESSED EMAILS
-                # =========================
-
                 if message_id in reminders:
                     continue
 
                 print("\n🔥 IMPORTANT AMBASSADOR EMAIL FOUND")
+
+                # =========================
+                # EXTRACT MEETING INFO
+                # =========================
+
+                meeting_time = extract_meeting_time(
+                    body
+                )
+
+                meeting_day = extract_day(
+                    body
+                )
 
                 # =========================
                 # WHATSAPP MESSAGE
@@ -310,11 +373,16 @@ while True:
 👤 From:
 {sender}
 
-📝 Details:
-{body[:500]}
+📅 Meeting Day:
+{meeting_day if meeting_day else "Not detected"}
 
-⏰ Reminder every 30 mins
-🛑 Stops automatically after few reminders
+⏰ Meeting Time:
+{meeting_time if meeting_time else "Not detected"}
+
+📝 Details:
+{body[:400]}
+
+🔔 Reminder every 30 mins
 
 🤖 Google AI Guardian
 """
@@ -322,10 +390,6 @@ while True:
                 print("=" * 60)
                 print(whatsapp_message)
                 print("=" * 60)
-
-                # =========================
-                # SEND WHATSAPP
-                # =========================
 
                 send_whatsapp_alert(
                     whatsapp_message
@@ -343,13 +407,19 @@ while True:
 
                     "body": body[:500],
 
+                    "meeting_day": meeting_day,
+
+                    "meeting_time": meeting_time,
+
                     "created_at":
                     datetime.now().isoformat(),
 
                     "last_sent":
                     datetime.now().isoformat(),
 
-                    "count": 1
+                    "count": 1,
+
+                    "meeting_reminder_sent": False
                 }
 
                 save_reminders()
@@ -375,7 +445,7 @@ while True:
             reminder_count = reminder["count"]
 
             # =========================
-            # STOP CONDITIONS
+            # AUTO STOP
             # =========================
 
             hours_passed = (
@@ -398,7 +468,7 @@ while True:
                 continue
 
             # =========================
-            # SEND EVERY 30 MINS
+            # NORMAL REMINDER
             # =========================
 
             minutes_since_last = (
@@ -412,6 +482,12 @@ while True:
 
 📌 Subject:
 {reminder['subject']}
+
+📅 Day:
+{reminder['meeting_day']}
+
+⏰ Time:
+{reminder['meeting_time']}
 
 ⚡ Please check this important update.
 
@@ -436,6 +512,69 @@ while True:
                 ] += 1
 
                 save_reminders()
+
+            # =========================
+            # 30 MIN MEETING ALERT
+            # =========================
+
+            if (
+                reminder["meeting_time"]
+                and not reminder["meeting_reminder_sent"]
+            ):
+
+                try:
+
+                    meeting_datetime = datetime.strptime(
+                        reminder["meeting_time"],
+                        "%I:%M %p"
+                    )
+
+                    meeting_today = current_time.replace(
+                        hour=meeting_datetime.hour,
+                        minute=meeting_datetime.minute,
+                        second=0
+                    )
+
+                    minutes_left = (
+                        meeting_today - current_time
+                    ).total_seconds() / 60
+
+                    if 0 <= minutes_left <= 30:
+
+                        meeting_alert = f"""
+⏰ MEETING STARTS SOON
+
+📌 {reminder['subject']}
+
+📅 {reminder['meeting_day']}
+
+🕒 {reminder['meeting_time']}
+
+⚡ Starts in less than 30 minutes.
+
+🤖 Google AI Guardian
+"""
+
+                        send_whatsapp_alert(
+                            meeting_alert
+                        )
+
+                        reminders[message_id][
+                            "meeting_reminder_sent"
+                        ] = True
+
+                        save_reminders()
+
+                        print(
+                            "\n📅 Meeting reminder sent."
+                        )
+
+                except Exception as e:
+
+                    print(
+                        "Meeting Reminder Error:",
+                        e
+                    )
 
     except Exception as e:
 
