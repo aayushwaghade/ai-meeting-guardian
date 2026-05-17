@@ -65,7 +65,7 @@ def send_whatsapp_alert(message):
 
     response = requests.post(url, headers=headers, json=data)
 
-    print("📲 WhatsApp Debug Logs")
+    print("\n📲 WhatsApp Debug Logs")
     print("WhatsApp Status:", response.status_code)
     print("WhatsApp Response:", response.text)
 
@@ -85,7 +85,11 @@ IMPORTANT_KEYWORDS = [
     "urgent",
     "demo",
     "submission",
-    "exam"
+    "exam",
+    "token",
+    "security",
+    "alert",
+    "github"
 ]
 
 # =========================
@@ -168,9 +172,22 @@ for msg in messages:
 
     clean_text = clean_text.replace("\n", " ")
     clean_text = clean_text.replace("\r", " ")
-    clean_text = clean_text.strip()
+    clean_text = clean_text.replace("\t", " ")
 
-    snippet = clean_text[:400]
+    clean_text = " ".join(clean_text.split())
+
+    # =========================
+    # SHORT AI-STYLE SUMMARY
+    # =========================
+
+    summary = clean_text[:220]
+
+    if len(clean_text) > 220:
+        summary += "..."
+
+    # =========================
+    # COMBINED TEXT
+    # =========================
 
     full_text = f"{subject} {clean_text}".lower()
 
@@ -191,8 +208,8 @@ for msg in messages:
 👤 From:
 {sender}
 
-🧠 Summary:
-{snippet}
+🧠 AI Summary:
+{summary}
 
 ⚡ Priority:
 HIGH
@@ -200,7 +217,7 @@ HIGH
 🤖 AI Meeting Guardian
 """
 
-        print("=" * 60)
+        print("\n" + "=" * 60)
         print(whatsapp_message)
         print("=" * 60)
 
