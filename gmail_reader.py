@@ -1,134 +1,124 @@
 import os
 import json
-import time
 import base64
+import time
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+from whatsapp_sender import send_whatsapp_message
 
-KEYWORDS = [
-    "google student ambassador",
-    "google ambassador",
-    "gemini ambassador",
-    "google campus ambassador",
-    "student ambassador",
-    "google developer student club",
-    "gdsc",
-    "google ai",
-    "google community",
-]
+
+# =========================
+# GOOGLE AUTH FROM RAILWAY ENV
+# =========================
+
+credentials_data = json.loads(os.getenv("GOOGLE_CREDENTIALS"))
+token_data = json.loads(os.getenv("GOOGLE_TOKEN"))
+
+creds = Credentials.from_authorized_user_info(
+    token_data,
+    ['https://www.googleapis.com/auth/gmail.readonly']
+)
+
+service = build('gmail', 'v1', credentials=creds)
+
+
+# =========================
+# LOAD PROCESSED EMAILS
+# =========================
 
 PROCESSED_FILE = "processed_emails.txt"
 
+if not os.path.exists(PROCESSED_FILE):
+    open(PROCESSED_FILE, "w").close()
 
-def load_credentials():
-    token_json = os.getenv("GOOGLE_TOKEN")
-
-    if not token_json:
-        raise Exception("GOOGLE_TOKEN variable missing in Railway")
-
-    token_data = json.loads(token_json)
-
-    creds = Credentials.from_authorized_user_info(token_data, SCOPES)
-
-    return creds
+with open(PROCESSED_FILE, "r") as f:
+    processed_emails = set(f.read().splitlines())
 
 
-def get_service():
-    creds = load_credentials()
-    service = build("gmail", "v1", credentials=creds)
-    return service
+# =========================
+# CHECK GMAIL
+# =========================
 
+def check_emails():
 
-def load_processed():
-    if not os.path.exists(PROCESSED_FILE):
-        return set()
+    print("🔎 Checking Inbox...")
 
-    with open(PROCESSED_FILE, "r") as f:
-        return set(line.strip() for line in f.readlines())
+    results = service.users().messages().list(
+        userId='me',
+        maxResults=5,
+        labelIds=['INBOX']
+    ).execute()
 
+    messages = results.get('messages', [])
 
-def save_processed(email_id):
-    with open(PROCESSED_FILE, "a") as f:
-        f.write(email_id + "\n")
+    if not messages:
+        print("No messages found.")
+        return
 
+    for msg in messages:
 
-def is_important(subject):
-    subject = subject.lower()
+        msg_id = msg['id']
 
-    for keyword in KEYWORDS:
-        if keyword.lower() in subject:
-            return True
+        if msg_id in processed_emails:
+            continue
 
-    return False
-
-
-def check_inbox():
-    try:
-        print("🔎 Checking Inbox...")
-
-        service = get_service()
-
-        results = service.users().messages().list(
-            userId="me",
-            maxResults=10
+        message = service.users().messages().get(
+            userId='me',
+            id=msg_id
         ).execute()
 
-        messages = results.get("messages", [])
+        headers = message["payload"]["headers"]
 
-        processed = load_processed()
+        subject = "No Subject"
+        sender = "Unknown Sender"
 
-        for msg in messages:
+        for header in headers:
 
-            email_id = msg["id"]
+            if header["name"] == "Subject":
+                subject = header["value"]
 
-            if email_id in processed:
-                continue
+            if header["name"] == "From":
+                sender = header["value"]
 
-            message = service.users().messages().get(
-                userId="me",
-                id=email_id
-            ).execute()
+        print(f"\n📩 New Email Found")
+        print(f"From: {sender}")
+        print(f"Subject: {subject}")
 
-            headers = message["payload"]["headers"]
+        whatsapp_text = f"""
+📩 *New Important Email*
 
-            subject = "No Subject"
-            sender = "Unknown Sender"
+👤 From:
+{sender}
 
-            for header in headers:
+📌 Subject:
+{subject}
 
-                if header["name"] == "Subject":
-                    subject = header["value"]
+Reply DONE after completing task.
+"""
 
-                if header["name"] == "From":
-                    sender = header["value"]
+        send_whatsapp_message(whatsapp_text)
 
-            important = is_important(subject)
+        processed_emails.add(msg_id)
 
-            print("\n========================")
-            print(f"📌 SUBJECT: {subject}")
-            print(f"👤 SENDER: {sender}")
-            print(f"🔥 Important Subject: {important}")
-            print("========================\n")
+        with open(PROCESSED_FILE, "a") as f:
+            f.write(msg_id + "\n")
 
-            save_processed(email_id)
+
+# =========================
+# LOOP
+# =========================
+
+while True:
+
+    try:
+        check_emails()
 
     except Exception as e:
-        print("\n❌ ERROR:\n")
+        print("\n❌ ERROR:")
         print(e)
 
+    print("⏳ Waiting 5 mins...\n")
 
-def start_monitoring():
-    while True:
-        check_inbox()
-        print("⏳ Waiting 5 mins...\n")
-        time.sleep(300)
-
-
-print("🚀 Google AI Guardian Running...")
-print("📬 Monitoring Google Ambassador Updates...")
-print("🤖 Bot Started Successfully\n")
-
-start_monitoring()
+    time.sleep(300)
